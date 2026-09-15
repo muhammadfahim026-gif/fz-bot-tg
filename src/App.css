@@ -1109,8 +1109,6 @@ select {
   background: rgba(255,255,255,.035);
   color: #a394ff;
 }
-
-
 /* =========================
    MOBILE
 ========================= */
@@ -1210,4 +1208,142 @@ select {
     grid-template-columns: 1fr;
   }
 
+}
+/* =========================
+   FZ BOT TG - LOGIN
+========================= */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at top left, rgba(124, 58, 237, 0.25), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.18), transparent 35%),
+    #09090f;
+  padding: 20px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 36px;
+  border-radius: 24px;
+  background: rgba(20, 20, 32, 0.95);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+}
+
+.login-logo {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  color: white;
+  font-size: 28px;
+  font-weight: 900;
+  box-shadow: 0 12px 35px rgba(124, 58, 237, 0.4);
+}
+
+.login-card h1 {
+  margin: 0;
+  text-align: center;
+  color: #ffffff;
+  font-size: 28px;
+}
+
+.login-subtitle {
+  margin: 6px 0 30px;
+  text-align: center;
+  color: #a78bfa;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.login-card label {
+  color: #d4d4d8;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.login-card input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 15px;
+  border-radius: 12px;
+  border: 1px solid #303044;
+  background: #11111b;
+  color: white;
+  outline: none;
+  font-size: 14px;
+}
+
+.login-card input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
+}
+
+.login-card button {
+  margin-top: 16px;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  color: white;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.login-card button:hover {
+  opacity: 0.92;
+}
+
+.login-card button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-error {
+  padding: 11px 12px;
+  margin-top: 8px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  font-size: 13px;
+}
+
+.login-footer {
+  margin: 24px 0 0;
+  text-align: center;
+  color: #71717a;
+  font-size: 12px;
+}
+
+.auth-loading {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #09090f;
+  color: white;
+}
+
+.auth-loading p {
+  color: #a1a1aa;
 }

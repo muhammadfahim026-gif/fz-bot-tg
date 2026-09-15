@@ -1,58 +1,7 @@
-import { useEffect, useState } from "react";
-import { supabase } from "./lib/supabase";
+import { useState } from "react";
 import "./App.css";
 
 function App() {
-  const [session, setSession] = useState(null);
-const [authLoading, setAuthLoading] = useState(true);
-const [loginEmail, setLoginEmail] = useState("");
-const [loginPassword, setLoginPassword] = useState("");
-const [loginError, setLoginError] = useState("");
-const [loginLoading, setLoginLoading] = useState(false);
-useEffect(() => {
-  let mounted = true;
-
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    if (mounted) {
-      setSession(session);
-      setAuthLoading(false);
-    }
-  });
-
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
-    setSession(session);
-    setAuthLoading(false);
-  });
-if (authLoading) {
-  return (
-    <div className="auth-loading">
-      <h2>FZ BOT TG</h2>
-      <p>Loading...</p>
-    </div>
-  );
-}
-
-if (!session) {
-  return (
-    <LoginPage
-      loginEmail={loginEmail}
-      setLoginEmail={setLoginEmail}
-      loginPassword={loginPassword}
-      setLoginPassword={setLoginPassword}
-      loginError={loginError}
-      setLoginError={setLoginError}
-      loginLoading={loginLoading}
-      setLoginLoading={setLoginLoading}
-    />
-  );
-}
-  return () => {
-    mounted = false;
-    subscription.unsubscribe();
-  };
-}, []);
   const [activePage, setActivePage] = useState("dashboard");
 
   const pageInfo = {
@@ -1365,79 +1314,5 @@ function FormInput({
   );
 }
 
-function LoginPage({
-  loginEmail,
-  setLoginEmail,
-  loginPassword,
-  setLoginPassword,
-  loginError,
-  setLoginError,
-  loginLoading,
-  setLoginLoading,
-}) {
-  const handleLogin = async (e) => {
-    e.preventDefault();
 
-    setLoginError("");
-    setLoginLoading(true);
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
-      password: loginPassword,
-    });
-
-    if (error) {
-      setLoginError(error.message);
-    }
-
-    setLoginLoading(false);
-  };
-
-  return (
-    <div className="auth-page">
-      <div className="login-card">
-        <div className="login-logo">FZ</div>
-
-        <h1>FZ BOT TG</h1>
-        <p className="login-subtitle">CONTROL PANEL</p>
-
-        <form onSubmit={handleLogin}>
-          <label>Email</label>
-
-          <input
-            type="email"
-            placeholder="Enter admin email"
-            value={loginEmail}
-            onChange={(e) => setLoginEmail(e.target.value)}
-            required
-          />
-
-          <label>Password</label>
-
-          <input
-            type="password"
-            placeholder="Enter password"
-            value={loginPassword}
-            onChange={(e) => setLoginPassword(e.target.value)}
-            required
-          />
-
-          {loginError && (
-            <div className="login-error">
-              {loginError}
-            </div>
-          )}
-
-          <button type="submit" disabled={loginLoading}>
-            {loginLoading ? "Logging in..." : "LOGIN"}
-          </button>
-        </form>
-
-        <p className="login-footer">
-          Secure Admin Access
-        </p>
-      </div>
-    </div>
-  );
-}
 export default App;
