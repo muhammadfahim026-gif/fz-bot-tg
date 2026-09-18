@@ -410,7 +410,7 @@ function BotController() {
   const [botUsername, setBotUsername] = useState("");
   const [botToken, setBotToken] = useState("");
 
-  const API_BASE = (() => {
+ const API_BASE = "";
     const configured = import.meta.env.VITE_API_BASE_URL?.trim();
     if (configured) return configured.replace(/\/$/, "");
     const { protocol, hostname, port } = window.location;
@@ -419,7 +419,7 @@ function BotController() {
     if (codespacesHost !== hostname) return `${protocol}//${codespacesHost}`;
     if (port === "3000") return `${protocol}//${hostname}`;
     return `${protocol}//${hostname}:3000`;
-  })();
+  });
 
   const loadConnectedBot = async () => {
     setLoading(true);
