@@ -238,14 +238,9 @@ function decryptBotToken(value) {
    ADMIN AUTH
    ========================================================= */
 
-async function requirePanelAdmin(
-  req,
-  res,
-  next
-) {
+async function requirePanelAdmin(req, res, next) {
   try {
-    const authorization =
-      req.headers.authorization || "";
+    const authorization = req.headers.authorization || "";
 
     if (!authorization.startsWith("Bearer ")) {
       return res.status(401).json({
@@ -253,6 +248,89 @@ async function requirePanelAdmin(
         message: "Authentication required.",
       });
     }
+
+    const accessToken = authorization
+      .slice("Bearer ".length)
+      .trim();
+
+    if (!accessToken) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
+
+    // Verify the Supabase access token.
+    const {
+      data: userData,
+      error: userError,
+    } = await adminSupabase.auth.getUser(accessToken);
+
+    if (userError || !userData?.user?.id) {
+      console.error(
+        "Supabase user verification failed:",
+        userError?.message || "User not found"
+      );
+
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired session.",
+      });
+    }
+
+    const authUserId = userData.user.id;
+
+    // Check whether this authenticated user is a panel admin.
+    const {
+      data: adminRow,
+      error: adminError,
+    } = await adminSupabase
+      .from("panel_admins")
+      .select("user_id")
+      .eq("user_id", authUserId)
+      .maybeSingle();
+
+    if (adminError) {
+      console.error(
+        "Panel admin lookup failed:",
+        adminError.message
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: "Admin verification failed.",
+      });
+    }
+
+    if (!adminRow) {
+      console.error(
+        "Panel admin access denied for user:",
+        authUserId
+      );
+
+      return res.status(403).json({
+        success: false,
+        message: "Panel admin access required.",
+      });
+    }
+
+    // Authentication + admin authorization successful.
+    req.authUser = userData.user;
+    req.panelAdmin = adminRow;
+
+    next();
+  } catch (error) {
+    console.error(
+      "Panel admin authentication error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Authentication check failed.",
+    });
+  }
+}
 
     const accessToken =
       authorization.slice(7).trim();
@@ -308,6 +386,18 @@ async function requirePanelAdmin(
           "Admin verification failed.",
       });
     }
+
+console.log("=== PANEL ADMIN DEBUG ===");
+console.log("Authenticated user ID:", userData.user.id);
+console.log("Admin row:", adminRow);
+console.log("Admin lookup error:", adminError?.message || null);
+console.log("=========================");
+
+    console.log("=== PANEL ADMIN DEBUG ===");
+    console.log("Authenticated user ID:", userData.user.id);
+    console.log("Admin row:", adminRow);
+    console.log("Admin lookup error:", adminError?.message || null);
+    console.log("=========================");
 
     if (!adminRow) {
       return res.status(403).json({
