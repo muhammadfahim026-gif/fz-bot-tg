@@ -9,13 +9,21 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
 /* =========================================================
+   BASIC SETTINGS
+   ========================================================= */
+
+app.disable("x-powered-by");
+
+app.use(express.json({ limit: "1mb" }));
+
+/* =========================================================
    CORS
    ========================================================= */
 
 function isAllowedOrigin(origin) {
   if (!origin) return true;
 
-  const allowedLocalOrigins = [
+  const allowed = [
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
@@ -24,24 +32,15 @@ function isAllowedOrigin(origin) {
     "http://127.0.0.1:5175",
   ];
 
-  if (allowedLocalOrigins.includes(origin)) {
+  if (allowed.includes(origin)) {
     return true;
   }
 
-  // GitHub Codespaces public URLs
-  if (
-    /^https:\/\/[a-zA-Z0-9-]+-\d+\.app\.github\.dev$/.test(origin)
-  ) {
-    return true;
-  }
-
-  return false;
+  return /^https:\/\/[a-zA-Z0-9-]+-\d+\.app\.github\.dev$/.test(
+    origin
+  );
 }
 
-/*
-  CORS headers MUST be added before authentication.
-  Browser first sends OPTIONS preflight request.
-*/
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
@@ -62,18 +61,15 @@ app.use((req, res, next) => {
       "Content-Type, Authorization, Accept, Origin, X-Requested-With"
     );
 
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-
-    res.setHeader("Access-Control-Max-Age", "86400");
+    res.setHeader(
+      "Access-Control-Allow-Credentials",
+      "true"
+    );
   }
 
   next();
 });
 
-/*
-  Explicit OPTIONS handler.
-  This is the important part for browser preflight.
-*/
 app.options(/.*/, (req, res) => {
   const origin = req.headers.origin;
 
@@ -85,7 +81,10 @@ app.options(/.*/, (req, res) => {
   }
 
   if (origin) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      origin
+    );
   }
 
   res.setHeader("Vary", "Origin");
@@ -100,35 +99,51 @@ app.options(/.*/, (req, res) => {
     "Content-Type, Authorization, Accept, Origin, X-Requested-With"
   );
 
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-
-  res.setHeader("Access-Control-Max-Age", "86400");
+  res.setHeader(
+    "Access-Control-Allow-Credentials",
+    "true"
+  );
 
   return res.sendStatus(204);
 });
-
-app.use(express.json({ limit: "1mb" }));
 
 /* =========================================================
    ENVIRONMENT
    ========================================================= */
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
-const encryptionKeyHex = process.env.BOT_ENCRYPTION_KEY;
+const supabaseSecretKey =
+  process.env.SUPABASE_SECRET_KEY;
+const encryptionKeyHex =
+  process.env.BOT_ENCRYPTION_KEY;
 
-if (!supabaseUrl || !supabaseSecretKey || !encryptionKeyHex) {
-  console.error("Missing required server environment variables.");
+if (
+  !supabaseUrl ||
+  !supabaseSecretKey ||
+  !encryptionKeyHex
+) {
+  console.error(
+    "Missing required server environment variables."
+  );
+
   console.error(
     "Required: SUPABASE_URL, SUPABASE_SECRET_KEY, BOT_ENCRYPTION_KEY"
   );
+
   process.exit(1);
 }
+
+/* =========================================================
+   ENCRYPTION
+   ========================================================= */
 
 let encryptionKey;
 
 try {
-  encryptionKey = Buffer.from(encryptionKeyHex, "hex");
+  encryptionKey = Buffer.from(
+    encryptionKeyHex,
+    "hex"
+  );
 
   if (encryptionKey.length !== 32) {
     throw new Error(
@@ -136,7 +151,11 @@ try {
     );
   }
 } catch (error) {
-  console.error("Encryption key error:", error.message);
+  console.error(
+    "Encryption key error:",
+    error.message
+  );
+
   process.exit(1);
 }
 
@@ -150,11 +169,6 @@ const adminSupabase = createClient(
     },
   }
 );
-
-/* =========================================================
-   BOT TOKEN ENCRYPTION
-   Format: iv.tag.ciphertext
-   ========================================================= */
 
 function encryptBotToken(token) {
   const iv = crypto.randomBytes(12);
@@ -180,20 +194,27 @@ function encryptBotToken(token) {
 }
 
 function decryptBotToken(value) {
-  const [
-    ivPart,
-    tagPart,
-    encryptedPart,
-  ] = String(value || "").split(".");
+  const parts = String(value || "").split(".");
 
-  if (!ivPart || !tagPart || !encryptedPart) {
+  if (parts.length !== 3) {
     throw new Error(
-      "Stored bot token has an invalid encrypted format."
+      "Invalid encrypted bot token."
     );
   }
 
-  const iv = Buffer.from(ivPart, "base64url");
-  const tag = Buffer.from(tagPart, "base64url");
+  const [ivPart, tagPart, encryptedPart] =
+    parts;
+
+  const iv = Buffer.from(
+    ivPart,
+    "base64url"
+  );
+
+  const tag = Buffer.from(
+    tagPart,
+    "base64url"
+  );
+
   const encrypted = Buffer.from(
     encryptedPart,
     "base64url"
@@ -214,20 +235,29 @@ function decryptBotToken(value) {
 }
 
 /* =========================================================
-   PANEL ADMIN AUTH
+   ADMIN AUTH
    ========================================================= */
 
-async function requirePanelAdmin(req, res, next) {
+async function requirePanelAdmin(
+  req,
+  res,
+  next
+) {
   try {
     const authorization =
       req.headers.authorization || "";
 
-    const token = authorization
-      .startsWith("Bearer ")
-      ? authorization.slice(7).trim()
-      : "";
+    if (!authorization.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
 
-    if (!token) {
+    const accessToken =
+      authorization.slice(7).trim();
+
+    if (!accessToken) {
       return res.status(401).json({
         success: false,
         message: "Authentication required.",
@@ -237,40 +267,53 @@ async function requirePanelAdmin(req, res, next) {
     const {
       data: userData,
       error: userError,
-    } = await adminSupabase.auth.getUser(token);
+    } =
+      await adminSupabase.auth.getUser(
+        accessToken
+      );
 
-    if (userError || !userData?.user) {
+    if (
+      userError ||
+      !userData?.user?.id
+    ) {
       return res.status(401).json({
         success: false,
-        message: "Invalid or expired session.",
+        message:
+          "Invalid or expired session.",
       });
     }
 
     const {
       data: adminRow,
       error: adminError,
-    } = await adminSupabase
-      .from("panel_admins")
-      .select("user_id")
-      .eq("user_id", userData.user.id)
-      .maybeSingle();
+    } =
+      await adminSupabase
+        .from("panel_admins")
+        .select("user_id")
+        .eq(
+          "user_id",
+          userData.user.id
+        )
+        .maybeSingle();
 
     if (adminError) {
       console.error(
         "Admin lookup error:",
-        adminError
+        adminError.message
       );
 
       return res.status(500).json({
         success: false,
-        message: "Admin verification failed.",
+        message:
+          "Admin verification failed.",
       });
     }
 
     if (!adminRow) {
       return res.status(403).json({
         success: false,
-        message: "Panel admin access required.",
+        message:
+          "Panel admin access required.",
       });
     }
 
@@ -285,13 +328,14 @@ async function requirePanelAdmin(req, res, next) {
 
     return res.status(500).json({
       success: false,
-      message: "Authentication check failed.",
+      message:
+        "Authentication check failed.",
     });
   }
 }
 
 /* =========================================================
-   TELEGRAM API HELPERS
+   TELEGRAM API
    ========================================================= */
 
 async function telegramApi(
@@ -299,27 +343,24 @@ async function telegramApi(
   method,
   payload = {}
 ) {
-  const response = await fetch(
-    `https://api.telegram.org/bot${encodeURIComponent(
-      token
-    )}/${method}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    }
-  );
+  const url =
+    `https://api.telegram.org/bot${token}/${method}`;
 
-  const data = await response
-    .json()
-    .catch(() => null);
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data =
+    await response.json().catch(() => null);
 
   if (!response.ok || !data?.ok) {
     const error = new Error(
       data?.description ||
-        `Telegram API request failed: ${method}`
+        `Telegram API failed: ${method}`
     );
 
     error.telegramCode =
@@ -331,6 +372,10 @@ async function telegramApi(
   return data.result;
 }
 
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
 function cleanCommand(command) {
   return String(command || "")
     .trim()
@@ -341,38 +386,18 @@ function cleanCommand(command) {
 }
 
 function safeText(value, fallback) {
-  const text = String(value ?? "").trim();
+  const text = String(
+    value ?? ""
+  ).trim();
 
   return text || fallback;
 }
 
 /* =========================================================
-   BOT RUNTIME MANAGER
+   DATABASE
    ========================================================= */
 
-const runtimes = new Map();
-
-function runtimeInfo(botId) {
-  const runtime =
-    runtimes.get(String(botId));
-
-  if (!runtime) {
-    return {
-      running: false,
-      offset: null,
-      lastError: null,
-    };
-  }
-
-  return {
-    running: runtime.running,
-    offset: runtime.offset ?? null,
-    lastError:
-      runtime.lastError || null,
-  };
-}
-
-async function loadBotRecord(botId) {
+async function getBot(botId) {
   const {
     data,
     error,
@@ -389,14 +414,17 @@ async function loadBotRecord(botId) {
   return data;
 }
 
-async function loadCustomization(botId) {
+async function getCustomization(botId) {
   const {
     data,
     error,
   } = await adminSupabase
     .from("bot_customizations")
     .select("*")
-    .eq("connected_bot_id", botId)
+    .eq(
+      "connected_bot_id",
+      botId
+    )
     .maybeSingle();
 
   if (error) {
@@ -406,7 +434,7 @@ async function loadCustomization(botId) {
   return data || {};
 }
 
-async function loadCommands() {
+async function getCommands() {
   const {
     data,
     error,
@@ -427,7 +455,7 @@ async function loadCommands() {
   return data || [];
 }
 
-async function loadButtons() {
+async function getButtons() {
   const {
     data,
     error,
@@ -451,97 +479,11 @@ async function loadButtons() {
   return data || [];
 }
 
-function buildInlineKeyboard(buttons) {
-  const rows = [];
-
-  for (const button of buttons) {
-    const text = safeText(
-      button.button_text,
-      "Open"
-    );
-
-    const type = String(
-      button.button_type || "url"
-    ).toLowerCase();
-
-    const value = String(
-      button.button_value || ""
-    ).trim();
-
-    if (!value) {
-      continue;
-    }
-
-    if (type === "url") {
-      rows.push([
-        {
-          text,
-          url: value,
-        },
-      ]);
-    } else if (
-      type === "callback" ||
-      type === "callback_data"
-    ) {
-      rows.push([
-        {
-          text,
-          callback_data:
-            value.slice(0, 64),
-        },
-      ]);
-    }
-  }
-
-  return rows;
-}
-
-async function syncTelegramCommands(token) {
-  const commands =
-    await loadCommands();
-
-  const telegramCommands = [];
-  const seen = new Set();
-
-  for (const item of commands) {
-    const command =
-      cleanCommand(item.command);
-
-    if (!command || seen.has(command)) {
-      continue;
-    }
-
-    seen.add(command);
-
-    telegramCommands.push({
-      command: command.slice(0, 32),
-      description: safeText(
-        item.response_message,
-        "Bot command"
-      ).slice(0, 256),
-    });
-
-    if (telegramCommands.length >= 100) {
-      break;
-    }
-  }
-
-  await telegramApi(
-    token,
-    "setMyCommands",
-    {
-      commands: telegramCommands,
-    }
-  );
-
-  return telegramCommands.length;
-}
-
 /* =========================================================
-   TELEGRAM USER
+   USER
    ========================================================= */
 
-async function upsertTelegramUser(message) {
+async function saveTelegramUser(message) {
   const from = message?.from;
 
   if (!from?.id) {
@@ -551,7 +493,7 @@ async function upsertTelegramUser(message) {
   const telegramId =
     String(from.id);
 
-  const payload = {
+  const userPayload = {
     telegram_id: telegramId,
     username:
       from.username || null,
@@ -562,16 +504,17 @@ async function upsertTelegramUser(message) {
   const {
     data: existing,
     error: existingError,
-  } = await adminSupabase
-    .from("users")
-    .select(
-      "id,balance,is_premium"
-    )
-    .eq(
-      "telegram_id",
-      telegramId
-    )
-    .maybeSingle();
+  } =
+    await adminSupabase
+      .from("users")
+      .select(
+        "id,balance,is_premium"
+      )
+      .eq(
+        "telegram_id",
+        telegramId
+      )
+      .maybeSingle();
 
   if (existingError) {
     throw existingError;
@@ -581,14 +524,15 @@ async function upsertTelegramUser(message) {
     const {
       data,
       error,
-    } = await adminSupabase
-      .from("users")
-      .update(payload)
-      .eq("id", existing.id)
-      .select(
-        "id,balance,is_premium"
-      )
-      .single();
+    } =
+      await adminSupabase
+        .from("users")
+        .update(userPayload)
+        .eq("id", existing.id)
+        .select(
+          "id,balance,is_premium"
+        )
+        .single();
 
     if (error) {
       throw error;
@@ -600,17 +544,18 @@ async function upsertTelegramUser(message) {
   const {
     data,
     error,
-  } = await adminSupabase
-    .from("users")
-    .insert({
-      ...payload,
-      balance: 0,
-      is_premium: false,
-    })
-    .select(
-      "id,balance,is_premium"
-    )
-    .single();
+  } =
+    await adminSupabase
+      .from("users")
+      .insert({
+        ...userPayload,
+        balance: 0,
+        is_premium: false,
+      })
+      .select(
+        "id,balance,is_premium"
+      )
+      .single();
 
   if (error) {
     throw error;
@@ -620,7 +565,7 @@ async function upsertTelegramUser(message) {
 }
 
 /* =========================================================
-   ACTIVITY LOG
+   ACTIVITY
    ========================================================= */
 
 async function logActivity(
@@ -650,10 +595,146 @@ async function logActivity(
 }
 
 /* =========================================================
-   CALLBACK QUERY
+   BUTTONS
    ========================================================= */
 
-async function handleCallbackQuery(
+function buildKeyboard(buttons) {
+  const rows = [];
+
+  for (const button of buttons) {
+    if (!button?.is_active) {
+      continue;
+    }
+
+    const text = safeText(
+      button.button_text,
+      "Open"
+    );
+
+    const type = String(
+      button.button_type || "url"
+    ).toLowerCase();
+
+    const value = String(
+      button.button_value || ""
+    ).trim();
+
+    if (!value) {
+      continue;
+    }
+
+    if (type === "url") {
+      rows.push([
+        {
+          text,
+          url: value,
+        },
+      ]);
+    }
+
+    if (
+      type === "callback" ||
+      type === "callback_data"
+    ) {
+      rows.push([
+        {
+          text,
+          callback_data:
+            value.slice(0, 64),
+        },
+      ]);
+    }
+  }
+
+  return rows;
+}
+
+/* =========================================================
+   TELEGRAM COMMAND SYNC
+   ========================================================= */
+
+async function syncCommands(token) {
+  const commands =
+    await getCommands();
+
+  const result = [];
+  const seen = new Set();
+
+  for (const item of commands) {
+    const command =
+      cleanCommand(item.command);
+
+    if (
+      !command ||
+      seen.has(command)
+    ) {
+      continue;
+    }
+
+    seen.add(command);
+
+    result.push({
+      command: command.slice(0, 32),
+      description: safeText(
+        item.response_message,
+        "Bot command"
+      ).slice(0, 256),
+    });
+
+    if (result.length >= 100) {
+      break;
+    }
+  }
+
+  await telegramApi(
+    token,
+    "setMyCommands",
+    {
+      commands: result,
+    }
+  );
+
+  return result.length;
+}
+
+/* =========================================================
+   BOT RUNTIME
+   ========================================================= */
+
+const runtimes = new Map();
+
+function getRuntime(botId) {
+  return runtimes.get(
+    String(botId)
+  );
+}
+
+function runtimeStatus(botId) {
+  const runtime =
+    getRuntime(botId);
+
+  if (!runtime) {
+    return {
+      running: false,
+      lastError: null,
+      lastSeenAt: null,
+    };
+  }
+
+  return {
+    running: runtime.running,
+    lastError:
+      runtime.lastError || null,
+    lastSeenAt:
+      runtime.lastSeenAt || null,
+  };
+}
+
+/* =========================================================
+   HANDLE CALLBACK
+   ========================================================= */
+
+async function handleCallback(
   token,
   callbackQuery
 ) {
@@ -673,14 +754,14 @@ async function handleCallbackQuery(
     );
   } catch (error) {
     console.error(
-      "Callback answer error:",
+      "Callback error:",
       error.message
     );
   }
 }
 
 /* =========================================================
-   HANDLE TELEGRAM MESSAGE
+   HANDLE MESSAGE
    ========================================================= */
 
 async function handleMessage(
@@ -699,43 +780,41 @@ async function handleMessage(
   }
 
   const user =
-    await upsertTelegramUser(
+    await saveTelegramUser(
       message
     );
 
-  const custom =
-    await loadCustomization(
+  const customization =
+    await getCustomization(
       botId
     );
 
-  const buttons =
-    await loadButtons();
-
   const commands =
-    await loadCommands();
+    await getCommands();
 
-  const inline_keyboard =
-    buildInlineKeyboard(
-      buttons
-    );
+  const buttons =
+    await getButtons();
 
-  const rawText =
+  const keyboard =
+    buildKeyboard(buttons);
+
+  const text =
     String(message.text || "")
       .trim();
 
-  const commandName =
-    rawText.startsWith("/")
-      ? cleanCommand(rawText)
+  const command =
+    text.startsWith("/")
+      ? cleanCommand(text)
       : "";
 
-  /* =========================
-     /start
-     ========================= */
+  /* -----------------------------------------
+     START
+  ----------------------------------------- */
 
-  if (commandName === "start") {
+  if (command === "start") {
     const welcome =
       safeText(
-        custom.welcome_message,
+        customization.welcome_message,
         "Welcome! Your bot is ready."
       );
 
@@ -744,9 +823,10 @@ async function handleMessage(
       text: welcome.slice(0, 4096),
     };
 
-    if (inline_keyboard.length) {
+    if (keyboard.length > 0) {
       payload.reply_markup = {
-        inline_keyboard,
+        inline_keyboard:
+          keyboard,
       };
     }
 
@@ -759,27 +839,27 @@ async function handleMessage(
     await logActivity(
       user?.id,
       "bot_start",
-      `Started bot ${botId}`
+      `Telegram user started bot ${botId}`
     );
 
     return;
   }
 
-  /* =========================
+  /* -----------------------------------------
      CUSTOM COMMAND
-     ========================= */
+  ----------------------------------------- */
 
-  if (commandName) {
+  if (command) {
     const matched =
       commands.find(
         (item) =>
           cleanCommand(
             item.command
-          ) === commandName
+          ) === command
       );
 
     if (matched) {
-      const responseMessage =
+      const response =
         safeText(
           matched.response_message,
           "Command received."
@@ -787,15 +867,13 @@ async function handleMessage(
 
       const payload = {
         chat_id: chatId,
-        text: responseMessage.slice(
-          0,
-          4096
-        ),
+        text: response.slice(0, 4096),
       };
 
-      if (inline_keyboard.length) {
+      if (keyboard.length > 0) {
         payload.reply_markup = {
-          inline_keyboard,
+          inline_keyboard:
+            keyboard,
         };
       }
 
@@ -808,120 +886,59 @@ async function handleMessage(
       await logActivity(
         user?.id,
         "bot_command",
-        `Used /${commandName}`
+        `Used /${command} on bot ${botId}`
       );
 
       return;
     }
   }
-}
 
-/* =========================================================
-   BOT POLLING
-   ========================================================= */
+  /* -----------------------------------------
+     NORMAL TEXT
+  ----------------------------------------- */
 
-async function pollBot(
-  botId,
-  token,
-  runtime
-) {
-  while (runtime.running) {
-    try {
-      const updates =
-        await telegramApi(
-          token,
-          "getUpdates",
-          {
-            offset:
-              runtime.offset ??
-              undefined,
-            timeout: 25,
-            limit: 50,
-            allowed_updates: [
-              "message",
-              "callback_query",
-            ],
-          }
-        );
-
-      runtime.lastError = null;
-
-      for (const update of updates || []) {
-        runtime.offset =
-          Number(update.update_id) + 1;
-
-        try {
-          if (update.message) {
-            await handleMessage(
-              token,
-              botId,
-              update.message
-            );
-          } else if (
-            update.callback_query
-          ) {
-            await handleCallbackQuery(
-              token,
-              update.callback_query
-            );
-          }
-        } catch (updateError) {
-          console.error(
-            `Bot ${botId} update ${update.update_id} error:`,
-            updateError
-          );
-
-          runtime.lastError =
-            updateError.message;
-        }
-      }
-    } catch (error) {
-      runtime.lastError =
-        error.message;
-
-      console.error(
-        `Bot ${botId} polling error:`,
-        error.message
+  if (text) {
+    const defaultReply =
+      safeText(
+        customization.default_reply,
+        ""
       );
 
-      if (
-        error?.telegramCode === 409
-      ) {
-        runtime.lastError =
-          "Telegram conflict: another getUpdates/webhook process is using this bot.";
-      }
-
-      if (!runtime.running) {
-        break;
-      }
-
-      await new Promise(
-        (resolve) =>
-          setTimeout(resolve, 5000)
+    if (defaultReply) {
+      await telegramApi(
+        token,
+        "sendMessage",
+        {
+          chat_id: chatId,
+          text: defaultReply.slice(
+            0,
+            4096
+          ),
+        }
       );
     }
   }
 }
 
 /* =========================================================
-   START BOT RUNTIME
+   START BOT
    ========================================================= */
 
-async function startBotRuntime(botId) {
+async function startBot(botId) {
   const key = String(botId);
 
-  const existingRuntime =
+  const existing =
     runtimes.get(key);
 
-  if (existingRuntime?.running) {
+  if (existing?.running) {
     return {
-      alreadyRunning: true,
-      ...runtimeInfo(botId),
+      success: true,
+      message: "Bot is already running.",
     };
   }
 
   const bot =
-    await loadBotRecord(botId);
+    await getBot(botId);
 
   if (!bot) {
     throw new Error(
@@ -935,57 +952,61 @@ async function startBotRuntime(botId) {
     );
   }
 
-  if (!bot.bot_token_encrypted) {
-    throw new Error(
-      "Encrypted bot token is missing."
-    );
-  }
-
   const token =
     decryptBotToken(
       bot.bot_token_encrypted
     );
 
-  /*
-    Long polling and webhook cannot
-    be used together.
-  */
-  await telegramApi(
-    token,
-    "deleteWebhook",
-    {
-      drop_pending_updates: false,
-    }
-  );
+  /* Verify token */
 
-  const me =
+  const telegramBot =
     await telegramApi(
       token,
       "getMe"
     );
 
-  const commandCount =
-    await syncTelegramCommands(
-      token
+  /* Remove webhook so polling works */
+
+  try {
+    await telegramApi(
+      token,
+      "deleteWebhook",
+      {
+        drop_pending_updates: false,
+      }
     );
+  } catch (error) {
+    console.error(
+      "Webhook removal warning:",
+      error.message
+    );
+  }
+
+  /* Sync commands */
+
+  try {
+    await syncCommands(token);
+  } catch (error) {
+    console.error(
+      "Command sync warning:",
+      error.message
+    );
+  }
 
   const runtime = {
     running: true,
-    offset: null,
+    offset: 0,
     lastError: null,
-    startedAt:
-      new Date().toISOString(),
+    lastSeenAt: null,
+    stopping: false,
   };
 
-  runtimes.set(
-    key,
-    runtime
-  );
+  runtimes.set(key, runtime);
 
   await adminSupabase
     .from("connected_bots")
     .update({
-      status: "running",
+      status: "connected",
       last_connected_at:
         new Date().toISOString(),
       last_seen_at:
@@ -995,81 +1016,200 @@ async function startBotRuntime(botId) {
     })
     .eq("id", botId);
 
-  pollBot(
-    botId,
-    token,
-    runtime
-  ).catch((error) => {
-    console.error(
-      `Bot ${botId} runtime stopped unexpectedly:`,
-      error
+  console.log(
+    `Telegram bot started: @${telegramBot.username}`
+  );
+
+  /* -----------------------------------------
+     POLLING LOOP
+  ----------------------------------------- */
+
+  (async () => {
+    while (
+      runtime.running &&
+      !runtime.stopping
+    ) {
+      try {
+        const updates =
+          await telegramApi(
+            token,
+            "getUpdates",
+            {
+              offset: runtime.offset,
+              timeout: 25,
+              allowed_updates: [
+                "message",
+                "callback_query",
+              ],
+            }
+          );
+
+        runtime.lastSeenAt =
+          new Date().toISOString();
+
+        if (
+          Array.isArray(updates) &&
+          updates.length
+        ) {
+          for (const update of updates) {
+            runtime.offset =
+              Number(update.update_id) + 1;
+
+            try {
+              if (update.message) {
+                await handleMessage(
+                  token,
+                  botId,
+                  update.message
+                );
+              }
+
+              if (
+                update.callback_query
+              ) {
+                await handleCallback(
+                  token,
+                  update.callback_query
+                );
+              }
+            } catch (error) {
+              console.error(
+                `Update error for bot ${botId}:`,
+                error.message
+              );
+
+              runtime.lastError =
+                error.message;
+            }
+          }
+        }
+
+        await adminSupabase
+          .from("connected_bots")
+          .update({
+            status: "connected",
+            last_seen_at:
+              new Date().toISOString(),
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", botId);
+      } catch (error) {
+        if (
+          !runtime.running ||
+          runtime.stopping
+        ) {
+          break;
+        }
+
+        runtime.lastError =
+          error.message;
+
+        console.error(
+          `Polling error for bot ${botId}:`,
+          error.message
+        );
+
+        await adminSupabase
+          .from("connected_bots")
+          .update({
+            status: "error",
+            last_seen_at:
+              new Date().toISOString(),
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", botId);
+
+        /* Wait before retry */
+
+        await new Promise(
+          (resolve) =>
+            setTimeout(resolve, 3000)
+        );
+      }
+    }
+
+    console.log(
+      `Telegram bot polling stopped: ${botId}`
     );
-
-    runtime.lastError =
-      error.message;
-
-    runtime.running = false;
-  });
+  })();
 
   return {
-    alreadyRunning: false,
-
+    success: true,
     bot: {
       id: bot.id,
-      bot_name:
-        bot.bot_name,
-      bot_username:
-        bot.bot_username ||
-        me?.username ||
-        null,
+      name: bot.bot_name,
+      username:
+        telegramBot.username,
+      firstName:
+        telegramBot.first_name,
+      idTelegram:
+        telegramBot.id,
     },
-
-    commandCount,
-
-    ...runtimeInfo(botId),
   };
 }
 
 /* =========================================================
-   STOP BOT RUNTIME
+   STOP BOT
    ========================================================= */
 
-async function stopBotRuntime(botId) {
+async function stopBot(botId) {
   const key = String(botId);
 
   const runtime =
     runtimes.get(key);
 
-  if (runtime) {
-    runtime.running = false;
-    runtimes.delete(key);
+  if (!runtime) {
+    await adminSupabase
+      .from("connected_bots")
+      .update({
+        status: "disconnected",
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", botId);
+
+    return {
+      success: true,
+      message: "Bot is not running.",
+    };
   }
 
-  const {
-    data,
-    error,
-  } = await adminSupabase
+  runtime.stopping = true;
+  runtime.running = false;
+
+  runtimes.delete(key);
+
+  await adminSupabase
     .from("connected_bots")
     .update({
-      status: "stopped",
+      status: "disconnected",
       updated_at:
         new Date().toISOString(),
     })
-    .eq("id", botId)
-    .select(
-      "id,bot_name,bot_username,status,is_active,last_connected_at,last_seen_at"
-    )
-    .single();
+    .eq("id", botId);
 
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return {
+    success: true,
+    message: "Bot stopped.",
+  };
 }
 
 /* =========================================================
-   HEALTH CHECK
+   ROOT
+   ========================================================= */
+
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "FZ BOT TG backend is running.",
+    service: "telegram-bot-backend",
+  });
+});
+
+/* =========================================================
+   HEALTH
    ========================================================= */
 
 app.get(
@@ -1079,14 +1219,16 @@ app.get(
       success: true,
       message:
         "FZ BOT TG backend is running",
-      runtimes:
+      telegramBots:
         runtimes.size,
+      time:
+        new Date().toISOString(),
     });
   }
 );
 
 /* =========================================================
-   CONNECT TELEGRAM BOT
+   CONNECT BOT
    ========================================================= */
 
 app.post(
@@ -1094,176 +1236,265 @@ app.post(
   requirePanelAdmin,
   async (req, res) => {
     try {
-      const botToken =
-        typeof req.body?.botToken ===
-        "string"
-          ? req.body.botToken.trim()
-          : "";
-
       const botUsername =
-        typeof req.body?.botUsername ===
-        "string"
-          ? req.body.botUsername
-              .trim()
-              .replace(/^@/, "")
-          : "";
+        String(
+          req.body?.botUsername || ""
+        )
+          .trim()
+          .replace(/^@/, "");
+
+      const botToken =
+        String(
+          req.body?.botToken || ""
+        ).trim();
+
+      if (!botUsername) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Bot username is required.",
+        });
+      }
 
       if (!botToken) {
         return res.status(400).json({
           success: false,
           message:
-            "Bot Token is required.",
+            "Bot token is required.",
         });
       }
 
-      if (botToken.length > 512) {
+      /* ---------------------------------------
+         VERIFY TELEGRAM TOKEN
+      --------------------------------------- */
+
+      let telegramBot;
+
+      try {
+        telegramBot =
+          await telegramApi(
+            botToken,
+            "getMe"
+          );
+      } catch (error) {
+        console.error(
+          "Telegram token verification failed:",
+          error.message
+        );
+
         return res.status(400).json({
           success: false,
           message:
-            "Bot Token is invalid.",
+            error.message ||
+            "Invalid Telegram bot token.",
         });
       }
 
-      /*
-        Verify token directly with Telegram.
-      */
-      const telegramBot =
-        await telegramApi(
-          botToken,
-          "getMe"
-        );
+      /* ---------------------------------------
+         CHECK USERNAME
+      --------------------------------------- */
 
-      const usernameForLookup =
-        telegramBot.username ||
-        botUsername ||
-        "";
+      if (
+        telegramBot.username &&
+        telegramBot.username
+          .toLowerCase() !==
+          botUsername.toLowerCase()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            `Bot username does not match the token. Token belongs to @${telegramBot.username}.`,
+        });
+      }
 
-      /*
-        Check whether this bot
-        already exists.
-      */
+      /* ---------------------------------------
+         CHECK EXISTING BOT
+      --------------------------------------- */
+
       const {
-        data: existing,
+        data: existingBot,
         error: existingError,
-      } = await adminSupabase
-        .from("connected_bots")
-        .select("id")
-        .eq(
-          "bot_username",
-          usernameForLookup
-        )
-        .maybeSingle();
+      } =
+        await adminSupabase
+          .from("connected_bots")
+          .select("id")
+          .eq(
+            "bot_username",
+            telegramBot.username
+          )
+          .maybeSingle();
 
       if (existingError) {
         throw existingError;
       }
 
-      const now =
-        new Date().toISOString();
+      if (existingBot?.id) {
+        /* Update existing bot */
+
+        const encryptedToken =
+          encryptBotToken(
+            botToken
+          );
+
+        const {
+          data,
+          error,
+        } =
+          await adminSupabase
+            .from("connected_bots")
+            .update({
+              bot_name:
+                telegramBot.first_name ||
+                botUsername,
+              bot_username:
+                telegramBot.username ||
+                botUsername,
+              bot_token_encrypted:
+                encryptedToken,
+              status: "connected",
+              is_active: true,
+              last_connected_at:
+                new Date().toISOString(),
+              last_seen_at:
+                new Date().toISOString(),
+              updated_at:
+                new Date().toISOString(),
+            })
+            .eq(
+              "id",
+              existingBot.id
+            )
+            .select(
+              "id,bot_name,bot_username,status,is_active"
+            )
+            .single();
+
+        if (error) {
+          throw error;
+        }
+
+        /* Start bot */
+
+        await startBot(data.id);
+
+        return res.json({
+          success: true,
+          message:
+            "Telegram bot connected successfully.",
+          bot: data,
+        });
+      }
+
+      /* ---------------------------------------
+         CREATE NEW BOT
+      --------------------------------------- */
 
       const encryptedToken =
         encryptBotToken(
           botToken
         );
 
-      const botDatabaseData = {
-        bot_name:
-          telegramBot.first_name ||
-          telegramBot.username ||
-          "Telegram Bot",
-
-        bot_username:
-          telegramBot.username ||
-          botUsername ||
-          null,
-
-        bot_token_encrypted:
-          encryptedToken,
-
-        status: "connected",
-
-        is_active: true,
-
-        last_connected_at:
-          now,
-
-        last_seen_at:
-          now,
-
-        updated_at:
-          now,
-      };
-
-      let savedBot;
-
-      /*
-        UPDATE existing bot
-      */
-      if (existing?.id) {
-        const {
-          data,
-          error,
-        } = await adminSupabase
+      const {
+        data: newBot,
+        error: insertError,
+      } =
+        await adminSupabase
           .from("connected_bots")
-          .update(
-            botDatabaseData
-          )
-          .eq(
-            "id",
-            existing.id
-          )
+          .insert({
+            user_id: null,
+            bot_name:
+              telegramBot.first_name ||
+              botUsername,
+            bot_username:
+              telegramBot.username ||
+              botUsername,
+            bot_token_encrypted:
+              encryptedToken,
+            status: "connected",
+            is_active: true,
+            last_connected_at:
+              new Date().toISOString(),
+            last_seen_at:
+              new Date().toISOString(),
+          })
           .select(
-            "id,user_id,bot_name,bot_username,status,is_active,last_connected_at,last_seen_at"
+            "id,bot_name,bot_username,status,is_active"
           )
           .single();
 
-        if (error) {
-          throw error;
-        }
-
-        savedBot = data;
+      if (insertError) {
+        throw insertError;
       }
 
-      /*
-        INSERT new bot
-      */
-      else {
-        const {
-          data,
-          error,
-        } = await adminSupabase
-          .from("connected_bots")
-          .insert(
-            botDatabaseData
-          )
-          .select(
-            "id,user_id,bot_name,bot_username,status,is_active,last_connected_at,last_seen_at"
-          )
-          .single();
+      /* ---------------------------------------
+         CREATE CUSTOMIZATION ROW
+      --------------------------------------- */
 
-        if (error) {
-          throw error;
-        }
+      const {
+        error: customizationError,
+      } =
+        await adminSupabase
+          .from("bot_customizations")
+          .insert({
+            connected_bot_id:
+              newBot.id,
+            bot_name:
+              telegramBot.first_name ||
+              botUsername,
+            welcome_message:
+              "Welcome! Your bot is ready.",
+            is_active: true,
+          });
 
-        savedBot = data;
+      if (
+        customizationError &&
+        customizationError.code !==
+          "23505"
+      ) {
+        console.error(
+          "Customization insert warning:",
+          customizationError.message
+        );
       }
+
+      /* ---------------------------------------
+         START BOT
+      --------------------------------------- */
+
+      await startBot(
+        newBot.id
+      );
+
+      await logActivity(
+        null,
+        "bot_connected",
+        `Connected Telegram bot @${telegramBot.username}`
+      );
 
       return res.json({
         success: true,
         message:
           "Telegram bot connected successfully.",
-        bot: savedBot,
+        bot: {
+          ...newBot,
+          telegram_id:
+            telegramBot.id,
+          telegram_first_name:
+            telegramBot.first_name,
+          telegram_username:
+            telegramBot.username,
+        },
       });
     } catch (error) {
       console.error(
-        "Bot connection error:",
+        "Connect bot error:",
         error
       );
 
       return res.status(500).json({
         success: false,
         message:
-          error?.message ||
+          error.message ||
           "Bot connection failed.",
       });
     }
@@ -1271,7 +1502,7 @@ app.post(
 );
 
 /* =========================================================
-   START BOT
+   START
    ========================================================= */
 
 app.post(
@@ -1279,53 +1510,30 @@ app.post(
   requirePanelAdmin,
   async (req, res) => {
     try {
-      const botId =
-        Number(req.params.id);
-
-      if (
-        !Number.isInteger(botId) ||
-        botId <= 0
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid bot ID.",
-        });
-      }
-
       const result =
-        await startBotRuntime(
-          botId
+        await startBot(
+          req.params.id
         );
 
-      return res.json({
-        success: true,
-
-        message:
-          result.alreadyRunning
-            ? "Bot is already running."
-            : "Telegram bot started successfully.",
-
-        ...result,
-      });
+      res.json(result);
     } catch (error) {
       console.error(
-        "Bot start error:",
+        "Start bot error:",
         error
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         message:
-          error?.message ||
-          "Bot start failed.",
+          error.message ||
+          "Failed to start bot.",
       });
     }
   }
 );
 
 /* =========================================================
-   STOP BOT
+   STOP
    ========================================================= */
 
 app.post(
@@ -1333,51 +1541,30 @@ app.post(
   requirePanelAdmin,
   async (req, res) => {
     try {
-      const botId =
-        Number(req.params.id);
-
-      if (
-        !Number.isInteger(botId) ||
-        botId <= 0
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid bot ID.",
-        });
-      }
-
-      const bot =
-        await stopBotRuntime(
-          botId
+      const result =
+        await stopBot(
+          req.params.id
         );
 
-      return res.json({
-        success: true,
-        message:
-          "Telegram bot stopped successfully.",
-        bot,
-        runtime:
-          runtimeInfo(botId),
-      });
+      res.json(result);
     } catch (error) {
       console.error(
-        "Bot stop error:",
+        "Stop bot error:",
         error
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         message:
-          error?.message ||
-          "Bot stop failed.",
+          error.message ||
+          "Failed to stop bot.",
       });
     }
   }
 );
 
 /* =========================================================
-   BOT STATUS
+   STATUS
    ========================================================= */
 
 app.get(
@@ -1385,36 +1572,21 @@ app.get(
   requirePanelAdmin,
   async (req, res) => {
     try {
-      const botId =
-        Number(req.params.id);
-
-      if (
-        !Number.isInteger(botId) ||
-        botId <= 0
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid bot ID.",
-        });
-      }
-
       const bot =
-        await loadBotRecord(
-          botId
+        await getBot(
+          req.params.id
         );
 
       if (!bot) {
         return res.status(404).json({
           success: false,
           message:
-            "Connected bot not found.",
+            "Bot not found.",
         });
       }
 
-      return res.json({
+      res.json({
         success: true,
-
         bot: {
           id: bot.id,
           bot_name:
@@ -1429,10 +1601,11 @@ app.get(
             bot.last_connected_at,
           last_seen_at:
             bot.last_seen_at,
+          runtime:
+            runtimeStatus(
+              bot.id
+            ),
         },
-
-        runtime:
-          runtimeInfo(botId),
       });
     } catch (error) {
       console.error(
@@ -1440,72 +1613,72 @@ app.get(
         error
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         message:
-          error?.message ||
-          "Bot status check failed.",
+          error.message ||
+          "Failed to get bot status.",
       });
     }
   }
 );
 
 /* =========================================================
-   START ALL ACTIVE BOTS
+   LIST CONNECTED BOTS
    ========================================================= */
 
-async function startAllActiveBots() {
-  const {
-    data,
-    error,
-  } = await adminSupabase
-    .from("connected_bots")
-    .select(
-      "id,is_active,status"
-    )
-    .eq(
-      "is_active",
-      true
-    );
-
-  if (error) {
-    console.error(
-      "Active bot load error:",
-      error
-    );
-
-    return;
-  }
-
-  for (const bot of data || []) {
+app.get(
+  "/api/bots",
+  requirePanelAdmin,
+  async (req, res) => {
     try {
-      await startBotRuntime(
-        bot.id
-      );
+      const {
+        data,
+        error,
+      } =
+        await adminSupabase
+          .from("connected_bots")
+          .select(
+            "id,bot_name,bot_username,status,is_active,last_connected_at,last_seen_at,created_at,updated_at"
+          )
+          .order("id", {
+            ascending: false,
+          });
 
-      console.log(
-        `Bot ${bot.id} runtime started.`
-      );
+      if (error) {
+        throw error;
+      }
+
+      const bots =
+        (data || []).map(
+          (bot) => ({
+            ...bot,
+            runtime:
+              runtimeStatus(
+                bot.id
+              ),
+          })
+        );
+
+      res.json({
+        success: true,
+        bots,
+      });
     } catch (error) {
       console.error(
-        `Could not start bot ${bot.id}:`,
-        error.message
+        "List bots error:",
+        error
       );
 
-      await adminSupabase
-        .from("connected_bots")
-        .update({
-          status: "error",
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "id",
-          bot.id
-        );
+      res.status(500).json({
+        success: false,
+        message:
+          error.message ||
+          "Failed to load bots.",
+      });
     }
   }
-}
+);
 
 /* =========================================================
    404
@@ -1517,29 +1690,23 @@ app.use(
       success: false,
       message:
         "API route not found.",
-      path:
-        req.originalUrl,
+      path: req.path,
     });
   }
 );
 
 /* =========================================================
-   GLOBAL ERROR HANDLER
+   ERROR HANDLER
    ========================================================= */
 
 app.use(
-  (
-    error,
-    req,
-    res,
-    next
-  ) => {
+  (error, req, res, next) => {
     console.error(
-      "Server error:",
+      "Unhandled server error:",
       error
     );
 
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message:
         "Internal server error.",
@@ -1548,7 +1715,51 @@ app.use(
 );
 
 /* =========================================================
-   START SERVER
+   AUTO START ACTIVE BOTS
+   ========================================================= */
+
+async function autoStartBots() {
+  try {
+    const {
+      data: bots,
+      error,
+    } =
+      await adminSupabase
+        .from("connected_bots")
+        .select(
+          "id,bot_name,bot_username,is_active"
+        )
+        .eq(
+          "is_active",
+          true
+        );
+
+    if (error) {
+      throw error;
+    }
+
+    for (const bot of bots || []) {
+      try {
+        await startBot(
+          bot.id
+        );
+      } catch (error) {
+        console.error(
+          `Auto-start failed for @${bot.bot_username}:`,
+          error.message
+        );
+      }
+    }
+  } catch (error) {
+    console.error(
+      "Auto-start bots error:",
+      error
+    );
+  }
+}
+
+/* =========================================================
+   SERVER START
    ========================================================= */
 
 app.listen(
@@ -1559,6 +1770,10 @@ app.listen(
       `FZ BOT TG backend running on port ${PORT}`
     );
 
-    await startAllActiveBots();
+    console.log(
+      `Health: http://localhost:${PORT}/api/health`
+    );
+
+    await autoStartBots();
   }
 );
