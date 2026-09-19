@@ -421,7 +421,69 @@ function BotController() {
   const [botUsername, setBotUsername] = useState("");
   const [botToken, setBotToken] = useState("");
 
+  const [showBotSettings, setShowBotSettings] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
+  const [botSettings, setBotSettings] = useState({
+    bot_name: "",
+    bot_description: "",
+    welcome_message: "",
+    support_username: "",
+    menu_button_text: "",
+    menu_button_url: "",
+    profile_photo_url: "",
+    theme_name: "default",
+    is_active: true,
+  });
+
   const API_BASE = "";
+
+  const saveBotSettings = async () => {
+    if (!bot?.id) return;
+
+    setSettingsSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error("Admin session expired. Please login again.");
+      }
+
+      const response = await fetch(
+        `${API_BASE}/api/bots/${bot.id}/customization`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(botSettings),
+        }
+      );
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || "Failed to save bot settings."
+        );
+      }
+
+      setBotSettings(data.customization || botSettings);
+      setSuccess("Bot settings saved successfully.");
+      setShowBotSettings(false);
+    } catch (err) {
+      console.error("Bot settings save error:", err);
+      setError(err.message || "Failed to save bot settings.");
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   const loadConnectedBot = async () => {
     setLoading(true);
@@ -456,6 +518,61 @@ function BotController() {
   useEffect(() => {
     loadConnectedBot();
   }, []);
+
+  const loadBotSettings = async () => {
+    if (!bot?.id) return;
+
+    setSettingsLoading(true);
+    setError("");
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error("Admin session expired. Please login again.");
+      }
+
+      const response = await fetch(
+        `${API_BASE}/api/bots/${bot.id}/customization`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || "Unable to load bot settings."
+        );
+      }
+
+      const customization = data.customization || {};
+
+      setBotSettings({
+        bot_name: customization.bot_name || bot.bot_name || "",
+        bot_description: customization.bot_description || "",
+        welcome_message:
+          customization.welcome_message ||
+          "Welcome! Your bot is ready.",
+        support_username: customization.support_username || "",
+        menu_button_text: customization.menu_button_text || "",
+        menu_button_url: customization.menu_button_url || "",
+        profile_photo_url: customization.profile_photo_url || "",
+        theme_name: customization.theme_name || "default",
+        is_active: customization.is_active !== false,
+      });
+    } catch (err) {
+      console.error("Bot settings load error:", err);
+      setError(err.message || "Unable to load bot settings.");
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
 
   const connectBot = async (e) => {
     e.preventDefault();
@@ -640,7 +757,26 @@ function BotController() {
           </div>
 
           <div className="feature-grid">
-            <FeatureCard icon="⚙" title="Bot Settings" description="Manage bot name, status and general configuration." />
+            <button
+              type="button"
+              className="feature-card"
+              onClick={() => {
+                setShowBotSettings(true);
+                loadBotSettings();
+              }}
+              style={{
+                textAlign: "left",
+                cursor: "pointer",
+                width: "100%",
+                border: "none",
+              }}
+            >
+              <div className="feature-icon">⚙</div>
+              <div>
+                <h3>Bot Settings</h3>
+                <p>Manage bot name, status and general configuration.</p>
+              </div>
+            </button>
             <FeatureCard icon="✉" title="Welcome Message" description="Edit the message users see when they start your bot." />
             <FeatureCard icon="⌘" title="Bot Commands" description="Create and manage commands and responses." />
             <FeatureCard icon="▦" title="Buttons" description="Manage buttons, links and their positions." />
@@ -668,6 +804,211 @@ function BotController() {
             </div>
           </div>
         </>
+      )}
+
+      {showBotSettings && bot && (
+        <div className="panel-card" style={{ marginTop: "18px" }}>
+          <div className="panel-header">
+            <div>
+              <h2>⚙ Bot Settings</h2>
+              <p>Configure your connected Telegram bot.</p>
+            </div>
+
+            <button
+              type="button"
+              className="delete-btn"
+              onClick={() => setShowBotSettings(false)}
+              disabled={settingsSaving}
+            >
+              Close
+            </button>
+          </div>
+
+          {settingsLoading ? (
+            <div className="empty-state">
+              <div className="empty-icon">◷</div>
+              <h3>Loading Settings...</h3>
+              <p>Please wait while bot settings are loaded.</p>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gap: "14px",
+                maxWidth: "720px",
+              }}
+            >
+              <label>
+                Bot Name
+                <input
+                  type="text"
+                  value={botSettings.bot_name}
+                  onChange={(e) =>
+                    setBotSettings({
+                      ...botSettings,
+                      bot_name: e.target.value,
+                    })
+                  }
+                  placeholder="My Telegram Bot"
+                />
+              </label>
+
+              <label>
+                Bot Description
+                <textarea
+                  rows="3"
+                  value={botSettings.bot_description}
+                  onChange={(e) =>
+                    setBotSettings({
+                      ...botSettings,
+                      bot_description: e.target.value,
+                    })
+                  }
+                  placeholder="Enter bot description"
+                />
+              </label>
+
+              <label>
+                Welcome Message
+                <textarea
+                  rows="5"
+                  value={botSettings.welcome_message}
+                  onChange={(e) =>
+                    setBotSettings({
+                      ...botSettings,
+                      welcome_message: e.target.value,
+                    })
+                  }
+                  placeholder="Welcome message"
+                />
+              </label>
+
+              <label>
+                Support Username
+                <input
+                  type="text"
+                  value={botSettings.support_username}
+                  onChange={(e) =>
+                    setBotSettings({
+                      ...botSettings,
+                      support_username: e.target.value,
+                    })
+                  }
+                  placeholder="@support"
+                />
+              </label>
+
+              <label>
+                Menu Button Text
+                <input
+                  type="text"
+                  value={botSettings.menu_button_text}
+                  onChange={(e) =>
+                    setBotSettings({
+                      ...botSettings,
+                      menu_button_text: e.target.value,
+                    })
+                  }
+                  placeholder="Support"
+                />
+              </label>
+
+              <label>
+                Menu Button URL
+                <input
+                  type="url"
+                  value={botSettings.menu_button_url}
+                  onChange={(e) =>
+                    setBotSettings({
+                      ...botSettings,
+                      menu_button_url: e.target.value,
+                    })
+                  }
+                  placeholder="https://example.com"
+                />
+              </label>
+
+              <label>
+                Profile Photo URL
+                <input
+                  type="url"
+                  value={botSettings.profile_photo_url}
+                  onChange={(e) =>
+                    setBotSettings({
+                      ...botSettings,
+                      profile_photo_url: e.target.value,
+                    })
+                  }
+                  placeholder="https://example.com/photo.jpg"
+                />
+              </label>
+
+              <label>
+                Theme
+                <select
+                  value={botSettings.theme_name}
+                  onChange={(e) =>
+                    setBotSettings({
+                      ...botSettings,
+                      theme_name: e.target.value,
+                    })
+                  }
+                >
+                  <option value="default">Default</option>
+                  <option value="dark">Dark</option>
+                  <option value="blue">Blue</option>
+                  <option value="purple">Purple</option>
+                </select>
+              </label>
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={botSettings.is_active}
+                  onChange={(e) =>
+                    setBotSettings({
+                      ...botSettings,
+                      is_active: e.target.checked,
+                    })
+                  }
+                />
+                Bot Active
+              </label>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={saveBotSettings}
+                  disabled={settingsSaving}
+                >
+                  {settingsSaving ? "Saving..." : "💾 Save Changes"}
+                </button>
+
+                <button
+                  type="button"
+                  className="delete-btn"
+                  onClick={() => setShowBotSettings(false)}
+                  disabled={settingsSaving}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {showConnectForm && !bot && (
