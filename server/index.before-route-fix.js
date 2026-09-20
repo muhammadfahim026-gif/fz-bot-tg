@@ -1700,6 +1700,39 @@ app.get(
   }
 );
 
+/* =========================================================
+   404
+   ========================================================= */
+
+app.use(
+  (req, res) => {
+    res.status(404).json({
+      success: false,
+      message:
+        "API route not found.",
+      path: req.path,
+    });
+  }
+);
+
+/* =========================================================
+   ERROR HANDLER
+   ========================================================= */
+
+app.use(
+  (error, req, res, next) => {
+    console.error(
+      "Unhandled server error:",
+      error
+    );
+
+    res.status(500).json({
+      success: false,
+      message:
+        "Internal server error.",
+    });
+  }
+);
 
 /* =========================================================
    AUTO START ACTIVE BOTS
@@ -2433,40 +2466,6 @@ app.delete(
 /* =========================================================
    SERVER START
    ========================================================= */
-
-/* =========================================================
-   404
-   ========================================================= */
-
-app.use(
-  (req, res) => {
-    res.status(404).json({
-      success: false,
-      message:
-        "API route not found.",
-      path: req.path,
-    });
-  }
-);
-
-/* =========================================================
-   ERROR HANDLER
-   ========================================================= */
-
-app.use(
-  (error, req, res, next) => {
-    console.error(
-      "Unhandled server error:",
-      error
-    );
-
-    res.status(500).json({
-      success: false,
-      message:
-        "Internal server error.",
-    });
-  }
-);
 
 app.listen(
   PORT,
