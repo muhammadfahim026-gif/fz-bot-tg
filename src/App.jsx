@@ -90,6 +90,7 @@ function App() {
               {activePage === "dashboard" && "Dashboard"}
               {activePage === "bot" && "Bot Controller"}
               {activePage === "products" && "Products"}
+              {activePage === "keys" && "Key Management"}
               {activePage === "payments" && "Payments & Settings"}
               {activePage === "premium" && "Premium"}
               {activePage === "resellers" && "Resellers"}
@@ -118,6 +119,7 @@ function App() {
         {activePage === "bot" && <BotController />}
 
         {activePage === "products" && <Products />}
+        {activePage === "keys" && <KeyManagement />}
 
         {activePage === "payments" && <Payments />}
 
@@ -266,6 +268,14 @@ function Sidebar({ activePage, setActivePage }) {
         >
           <span>▤</span>
           Products
+        </button>
+
+        <button
+          className={activePage === "keys" ? "nav-item active" : "nav-item"}
+          onClick={() => setActivePage("keys")}
+        >
+          <span>🔑</span>
+          Key Management
         </button>
 
         <button
@@ -3435,15 +3445,370 @@ function Products() {
 
 function Payments() {
   const [activeTab, setActiveTab] = useState("deposits");
+  const [payments, setPayments] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [methods, setMethods] = useState([]);
+
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [loadingMethods, setLoadingMethods] = useState(false);
+
+  const [savingMethod, setSavingMethod] = useState(false);
+  const [deletingMethod, setDeletingMethod] = useState(null);
+  const [editingMethodId, setEditingMethodId] = useState(null);
+
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
+
+  const emptyMethod = {
+    name: "",
+    type: "upi",
+    upi_id: "",
+    account_name: "",
+    account_number: "",
+    ifsc_code: "",
+    qr_image_url: "",
+    instructions: "",
+    is_active: true,
+    position: 0,
+  };
+
+  const [methodForm, setMethodForm] = useState(emptyMethod);
+
+  const loadPayments = async () => {
+    setLoadingPayments(true);
+    setError("");
+
+    const { data, error: fetchError } = await supabase
+      .from("payments")
+      .select(`
+        *,
+        users (
+          telegram_id,
+          username,
+          first_name
+        )
+      `)
+      .order("created_at", { ascending: false });
+
+    if (fetchError) {
+      console.error("Payments load error:", fetchError);
+      setError(fetchError.message);
+      setPayments([]);
+    } else {
+      setPayments(data || []);
+    }
+
+    setLoadingPayments(false);
+  };
+
+  const loadOrders = async () => {
+    setLoadingOrders(true);
+
+    const { data, error: fetchError } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        users (
+          telegram_id,
+          username,
+          first_name
+        ),
+        products (
+          name,
+          duration
+        ),
+        product_keys (
+          key_code,
+          status,
+          expires_at
+        )
+      `)
+      .order("created_at", { ascending: false });
+
+    if (fetchError) {
+      console.error("Orders load error:", fetchError);
+      setOrders([]);
+      setError(fetchError.message);
+    } else {
+      setOrders(data || []);
+    }
+
+    setLoadingOrders(false);
+  };
+
+  const loadMethods = async () => {
+    setLoadingMethods(true);
+
+    const { data, error: fetchError } = await supabase
+      .from("payment_methods")
+      .select("*")
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: false });
+
+    if (fetchError) {
+      console.error("Payment methods load error:", fetchError);
+      setMethods([]);
+      setError(fetchError.message);
+    } else {
+      setMethods(data || []);
+    }
+
+    setLoadingMethods(false);
+  };
+
+  useEffect(() => {
+    loadPayments();
+    loadOrders();
+    loadMethods();
+  }, []);
+
+  const resetMethodForm = () => {
+    setMethodForm(emptyMethod);
+    setEditingMethodId(null);
+  };
+
+  const savePaymentMethod = async (event) => {
+    event.preventDefault();
+
+    if (!methodForm.name.trim()) {
+      setError("Payment method name required.");
+      return;
+    }
+
+    if (methodForm.type === "upi" && !methodForm.upi_id.trim()) {
+      setError("UPI ID required.");
+      return;
+    }
+
+    setSavingMethod(true);
+    setError("");
+
+    const payload = {
+      name: methodForm.name.trim(),
+      type: methodForm.type,
+      upi_id: methodForm.upi_id.trim() || null,
+      account_name: methodForm.account_name.trim() || null,
+      account_number: methodForm.account_number.trim() || null,
+      ifsc_code: methodForm.ifsc_code.trim() || null,
+      qr_image_url: methodForm.qr_image_url.trim() || null,
+      instructions: methodForm.instructions.trim() || null,
+      is_active: Boolean(methodForm.is_active),
+      position: Number(methodForm.position) || 0,
+      updated_at: new Date().toISOString(),
+    };
+
+    let result;
+
+    if (editingMethodId) {
+      result = await supabase
+        .from("payment_methods")
+        .update(payload)
+        .eq("id", editingMethodId);
+    } else {
+      result = await supabase
+        .from("payment_methods")
+        .insert(payload);
+    }
+
+    if (result.error) {
+      console.error("Payment method save error:", result.error);
+      setError(result.error.message);
+    } else {
+      resetMethodForm();
+      await loadMethods();
+    }
+
+    setSavingMethod(false);
+  };
+
+  const editPaymentMethod = (method) => {
+    setEditingMethodId(method.id);
+
+    setMethodForm({
+      name: method.name || "",
+      type: method.type || "upi",
+      upi_id: method.upi_id || "",
+      account_name: method.account_name || "",
+      account_number: method.account_number || "",
+      ifsc_code: method.ifsc_code || "",
+      qr_image_url: method.qr_image_url || "",
+      instructions: method.instructions || "",
+      is_active: Boolean(method.is_active),
+      position: method.position || 0,
+    });
+  };
+
+  const deletePaymentMethod = async (id) => {
+    if (!window.confirm("Delete this payment method?")) return;
+
+    setDeletingMethod(id);
+    setError("");
+
+    const { error: deleteError } = await supabase
+      .from("payment_methods")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      console.error("Payment method delete error:", deleteError);
+      setError(deleteError.message);
+    } else {
+      await loadMethods();
+
+      if (editingMethodId === id) {
+        resetMethodForm();
+      }
+    }
+
+    setDeletingMethod(null);
+  };
+
+  const togglePaymentMethod = async (method) => {
+    const { error: updateError } = await supabase
+      .from("payment_methods")
+      .update({
+        is_active: !method.is_active,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", method.id);
+
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      await loadMethods();
+    }
+  };
+
+  const generateUpiQrUrl = (method) => {
+    if (!method?.upi_id) return "";
+
+    const upiUrl =
+      `upi://pay?pa=${encodeURIComponent(method.upi_id)}` +
+      `&pn=${encodeURIComponent(method.account_name || method.name || "FZ BOT TG")}`;
+
+    return `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiUrl)}`;
+  };
+
+  const refreshAll = async () => {
+    await Promise.all([
+      loadPayments(),
+      loadOrders(),
+      loadMethods(),
+    ]);
+  };
+
+  const successfulPayments = payments.filter(
+    (item) => String(item.status || "").toLowerCase() === "success" ||
+      String(item.status || "").toLowerCase() === "completed" ||
+      String(item.status || "").toLowerCase() === "paid"
+  );
+
+  const pendingPayments = payments.filter(
+    (item) => String(item.status || "").toLowerCase() === "pending"
+  );
+
+  const failedPayments = payments.filter(
+    (item) => String(item.status || "").toLowerCase() === "failed" ||
+      String(item.status || "").toLowerCase() === "rejected"
+  );
+
+  const totalDeposits = payments.reduce(
+    (sum, item) => sum + Number(item.amount || 0),
+    0
+  );
+
+  const filteredPayments = payments.filter((payment) => {
+    const text = [
+      payment.transaction_id,
+      payment.payment_method,
+      payment.status,
+      payment.users?.username,
+      payment.users?.telegram_id,
+      payment.users?.first_name,
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return text.includes(search.toLowerCase());
+  });
+
+  const filteredOrders = orders.filter((order) => {
+    const text = [
+      order.status,
+      order.payment_method,
+      order.transaction_id,
+      order.products?.name,
+      order.products?.duration,
+      order.users?.username,
+      order.users?.telegram_id,
+      order.product_keys?.key_code,
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return text.includes(search.toLowerCase());
+  });
 
   return (
     <section className="page">
       <div className="page-heading">
         <div>
-          <h1>Payments & Settings</h1>
+          <h1>💳 Payments & Settings</h1>
           <p>
-            Manage deposits, transactions and payment settings.
+            Manage deposits, payment history, payment methods and QR settings.
           </p>
+        </div>
+
+        <button type="button" onClick={refreshAll}>
+          🔄 Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div
+          style={{
+            marginBottom: "16px",
+            padding: "12px 14px",
+            borderRadius: "10px",
+            background: "rgba(239,68,68,0.12)",
+            border: "1px solid rgba(239,68,68,0.35)",
+            color: "#fca5a5",
+          }}
+        >
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* PAYMENT OVERVIEW */}
+
+      <div
+        className="stats-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+          gap: "14px",
+          marginBottom: "18px",
+        }}
+      >
+        <div className="stat-card">
+          <span>Total Deposits</span>
+          <strong>₹{totalDeposits.toFixed(2)}</strong>
+        </div>
+
+        <div className="stat-card">
+          <span>Successful</span>
+          <strong>{successfulPayments.length}</strong>
+        </div>
+
+        <div className="stat-card">
+          <span>Pending</span>
+          <strong>{pendingPayments.length}</strong>
+        </div>
+
+        <div className="stat-card">
+          <span>Failed</span>
+          <strong>{failedPayments.length}</strong>
         </div>
       </div>
 
@@ -3452,58 +3817,1288 @@ function Payments() {
           className={activeTab === "deposits" ? "tab active" : "tab"}
           onClick={() => setActiveTab("deposits")}
         >
-          Deposits
+          💰 Deposits
         </button>
 
         <button
           className={activeTab === "history" ? "tab active" : "tab"}
           onClick={() => setActiveTab("history")}
         >
-          Payment History
+          📜 Payment History
         </button>
 
         <button
           className={activeTab === "methods" ? "tab active" : "tab"}
           onClick={() => setActiveTab("methods")}
         >
-          Payment Methods
+          💳 Payment Methods
         </button>
 
         <button
           className={activeTab === "settings" ? "tab active" : "tab"}
           onClick={() => setActiveTab("settings")}
         >
-          Settings
+          ⚙️ Settings
         </button>
       </div>
 
+      {/* DEPOSITS */}
+
+      {activeTab === "deposits" && (
+        <div className="panel-card">
+          <div className="panel-header">
+            <div>
+              <h2>💰 User Deposits</h2>
+              <p>Track money added by Telegram users.</p>
+            </div>
+
+            <input
+              type="search"
+              placeholder="Search user / transaction..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              style={{ maxWidth: "300px" }}
+            />
+          </div>
+
+          {loadingPayments ? (
+            <div className="empty-state">
+              <h3>Loading deposits...</h3>
+            </div>
+          ) : filteredPayments.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">₹</div>
+              <h3>No Deposits Yet</h3>
+              <p>
+                Deposit records will appear here when users add funds.
+              </p>
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Telegram ID</th>
+                    <th>Amount</th>
+                    <th>Method</th>
+                    <th>Transaction</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredPayments.map((payment) => (
+                    <tr key={payment.id}>
+                      <td>
+                        {payment.users?.username
+                          ? `@${payment.users.username}`
+                          : payment.users?.first_name || "Unknown"}
+                      </td>
+
+                      <td>{payment.users?.telegram_id || "—"}</td>
+
+                      <td>
+                        ₹{Number(payment.amount || 0).toFixed(2)}
+                      </td>
+
+                      <td>{payment.payment_method || "—"}</td>
+
+                      <td>{payment.transaction_id || "—"}</td>
+
+                      <td>
+                        {String(payment.status || "pending")}
+                      </td>
+
+                      <td>
+                        {payment.created_at
+                          ? new Date(payment.created_at).toLocaleString()
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PAYMENT HISTORY / ORDERS */}
+
+      {activeTab === "history" && (
+        <div className="panel-card">
+          <div className="panel-header">
+            <div>
+              <h2>📜 Payment & Purchase History</h2>
+              <p>
+                Payment and product purchase records.
+              </p>
+            </div>
+
+            <input
+              type="search"
+              placeholder="Search..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              style={{ maxWidth: "300px" }}
+            />
+          </div>
+
+          {loadingOrders ? (
+            <div className="empty-state">
+              <h3>Loading orders...</h3>
+            </div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="empty-state">
+              <h3>No Orders Yet</h3>
+              <p>
+                Product purchase records will appear here.
+              </p>
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Product</th>
+                    <th>Duration</th>
+                    <th>Amount</th>
+                    <th>Key</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredOrders.map((order) => (
+                    <tr key={order.id}>
+                      <td>
+                        {order.users?.username
+                          ? `@${order.users.username}`
+                          : order.users?.first_name || "Unknown"}
+                      </td>
+
+                      <td>{order.products?.name || "—"}</td>
+
+                      <td>
+                        {order.products?.duration || "—"}
+                      </td>
+
+                      <td>
+                        ₹{Number(order.amount || 0).toFixed(2)}
+                      </td>
+
+                      <td>
+                        {order.product_keys?.key_code || "Not assigned"}
+                      </td>
+
+                      <td>{order.status || "pending"}</td>
+
+                      <td>
+                        {order.created_at
+                          ? new Date(order.created_at).toLocaleString()
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PAYMENT METHODS */}
+
+      {activeTab === "methods" && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(300px, 0.9fr) minmax(320px, 1.1fr)",
+            gap: "18px",
+          }}
+        >
+          <div className="panel-card">
+            <div className="panel-header">
+              <div>
+                <h2>
+                  {editingMethodId
+                    ? "✏️ Edit Payment Method"
+                    : "➕ Add Payment Method"}
+                </h2>
+
+                <p>
+                  Configure the UPI account used for customer payments.
+                </p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={savePaymentMethod}
+              style={{
+                display: "grid",
+                gap: "12px",
+              }}
+            >
+              <label>
+                Method Name
+                <input
+                  type="text"
+                  placeholder="Main UPI"
+                  value={methodForm.name}
+                  onChange={(event) =>
+                    setMethodForm({
+                      ...methodForm,
+                      name: event.target.value,
+                    })
+                  }
+                />
+              </label>
+
+              <label>
+                Type
+                <select
+                  value={methodForm.type}
+                  onChange={(event) =>
+                    setMethodForm({
+                      ...methodForm,
+                      type: event.target.value,
+                    })
+                  }
+                >
+                  <option value="upi">UPI</option>
+                  <option value="bank">Bank Transfer</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+
+              <label>
+                UPI ID
+                <input
+                  type="text"
+                  placeholder="example@upi"
+                  value={methodForm.upi_id}
+                  onChange={(event) =>
+                    setMethodForm({
+                      ...methodForm,
+                      upi_id: event.target.value,
+                    })
+                  }
+                />
+              </label>
+
+              <label>
+                Account Name
+                <input
+                  type="text"
+                  placeholder="Account holder name"
+                  value={methodForm.account_name}
+                  onChange={(event) =>
+                    setMethodForm({
+                      ...methodForm,
+                      account_name: event.target.value,
+                    })
+                  }
+                />
+              </label>
+
+              <label>
+                Account Number
+                <input
+                  type="text"
+                  placeholder="Optional"
+                  value={methodForm.account_number}
+                  onChange={(event) =>
+                    setMethodForm({
+                      ...methodForm,
+                      account_number: event.target.value,
+                    })
+                  }
+                />
+              </label>
+
+              <label>
+                IFSC Code
+                <input
+                  type="text"
+                  placeholder="Optional"
+                  value={methodForm.ifsc_code}
+                  onChange={(event) =>
+                    setMethodForm({
+                      ...methodForm,
+                      ifsc_code: event.target.value,
+                    })
+                  }
+                />
+              </label>
+
+              <label>
+                Custom QR Image URL
+                <input
+                  type="url"
+                  placeholder="Optional"
+                  value={methodForm.qr_image_url}
+                  onChange={(event) =>
+                    setMethodForm({
+                      ...methodForm,
+                      qr_image_url: event.target.value,
+                    })
+                  }
+                />
+              </label>
+
+              <label>
+                Payment Instructions
+                <textarea
+                  rows="4"
+                  placeholder="Example: Pay the exact amount and wait for verification."
+                  value={methodForm.instructions}
+                  onChange={(event) =>
+                    setMethodForm({
+                      ...methodForm,
+                      instructions: event.target.value,
+                    })
+                  }
+                />
+              </label>
+
+              <label>
+                Position
+                <input
+                  type="number"
+                  min="0"
+                  value={methodForm.position}
+                  onChange={(event) =>
+                    setMethodForm({
+                      ...methodForm,
+                      position: event.target.value,
+                    })
+                  }
+                />
+              </label>
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={methodForm.is_active}
+                  onChange={(event) =>
+                    setMethodForm({
+                      ...methodForm,
+                      is_active: event.target.checked,
+                    })
+                  }
+                />
+                Active payment method
+              </label>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button type="submit" disabled={savingMethod}>
+                  {savingMethod
+                    ? "Saving..."
+                    : editingMethodId
+                    ? "Update Method"
+                    : "Add Method"}
+                </button>
+
+                {editingMethodId && (
+                  <button
+                    type="button"
+                    onClick={resetMethodForm}
+                    disabled={savingMethod}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+
+          <div className="panel-card">
+            <div className="panel-header">
+              <div>
+                <h2>💳 Saved Payment Methods</h2>
+                <p>
+                  Active methods can be used by the payment system.
+                </p>
+              </div>
+            </div>
+
+            {loadingMethods ? (
+              <div className="empty-state">
+                <h3>Loading methods...</h3>
+              </div>
+            ) : methods.length === 0 ? (
+              <div className="empty-state">
+                <h3>No Payment Method Added</h3>
+                <p>
+                  Add your UPI method from the form.
+                </p>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: "12px",
+                }}
+              >
+                {methods.map((method) => {
+                  const generatedQr = generateUpiQrUrl(method);
+                  const qr =
+                    method.qr_image_url || generatedQr;
+
+                  return (
+                    <div
+                      key={method.id}
+                      style={{
+                        padding: "14px",
+                        borderRadius: "12px",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "12px",
+                          alignItems: "flex-start",
+                        }}
+                      >
+                        <div>
+                          <h3 style={{ margin: 0 }}>
+                            {method.name}
+                          </h3>
+
+                          <p style={{ margin: "6px 0" }}>
+                            {method.type?.toUpperCase()}
+                          </p>
+
+                          {method.upi_id && (
+                            <p style={{ margin: "4px 0" }}>
+                              UPI: <strong>{method.upi_id}</strong>
+                            </p>
+                          )}
+
+                          {method.account_name && (
+                            <p style={{ margin: "4px 0" }}>
+                              Name: {method.account_name}
+                            </p>
+                          )}
+
+                          <p style={{ margin: "8px 0" }}>
+                            {method.is_active
+                              ? "🟢 Active"
+                              : "🔴 Inactive"}
+                          </p>
+                        </div>
+
+                        {qr && (
+                          <img
+                            src={qr}
+                            alt={`${method.name} QR`}
+                            style={{
+                              width: "130px",
+                              height: "130px",
+                              objectFit: "contain",
+                              background: "#fff",
+                              borderRadius: "8px",
+                              padding: "5px",
+                            }}
+                          />
+                        )}
+                      </div>
+
+                      {method.instructions && (
+                        <p
+                          style={{
+                            marginTop: "10px",
+                            opacity: 0.75,
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {method.instructions}
+                        </p>
+                      )}
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                          marginTop: "12px",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => editPaymentMethod(method)}
+                        >
+                          ✏️ Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            togglePaymentMethod(method)
+                          }
+                        >
+                          {method.is_active
+                            ? "Disable"
+                            : "Enable"}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="delete-btn"
+                          onClick={() =>
+                            deletePaymentMethod(method.id)
+                          }
+                          disabled={deletingMethod === method.id}
+                        >
+                          {deletingMethod === method.id
+                            ? "Deleting..."
+                            : "Delete"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SETTINGS */}
+
+      {activeTab === "settings" && (
+        <div className="panel-card">
+          <div className="panel-header">
+            <div>
+              <h2>⚙️ Payment Settings</h2>
+              <p>
+                Payment verification and purchase rules.
+              </p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: "12px",
+              maxWidth: "760px",
+            }}
+          >
+            <div
+              style={{
+                padding: "14px",
+                borderRadius: "10px",
+                background: "rgba(255,255,255,0.04)",
+              }}
+            >
+              <strong>QR Payments</strong>
+              <p style={{ opacity: 0.7 }}>
+                QR codes are generated from the active UPI payment method.
+              </p>
+            </div>
+
+            <div
+              style={{
+                padding: "14px",
+                borderRadius: "10px",
+                background: "rgba(255,255,255,0.04)",
+              }}
+            >
+              <strong>Exact Amount Rule</strong>
+              <p style={{ opacity: 0.7 }}>
+                A purchase should be confirmed only when the verified payment
+                amount matches the required product price.
+              </p>
+            </div>
+
+            <div
+              style={{
+                padding: "14px",
+                borderRadius: "10px",
+                background: "rgba(255,255,255,0.04)",
+              }}
+            >
+              <strong>Automatic Key Delivery</strong>
+              <p style={{ opacity: 0.7 }}>
+                After successful payment verification, the backend can assign
+                an available product key and record the purchase.
+              </p>
+            </div>
+
+            <div
+              style={{
+                padding: "14px",
+                borderRadius: "10px",
+                background: "rgba(255,193,7,0.08)",
+                border: "1px solid rgba(255,193,7,0.2)",
+              }}
+            >
+              <strong>⚠️ Payment Gateway</strong>
+              <p style={{ opacity: 0.75 }}>
+                QR generation alone does not verify whether money was actually
+                received. Automatic payment detection requires a supported
+                payment gateway/API and webhook. We will connect that separately
+                before enabling automatic key delivery.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+
+/* =========================
+   KEY MANAGEMENT
+========================= */
+
+function KeyManagement() {
+  const [products, setProducts] = useState([]);
+  const [keys, setKeys] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [pricingProduct, setPricingProduct] = useState(null);
+  const [pricingPlans, setPricingPlans] = useState([]);
+  const [pricingLoading, setPricingLoading] = useState(false);
+  const [pricingSaving, setPricingSaving] = useState(false);
+  const [pricingDeleting, setPricingDeleting] = useState(null);
+
+  const emptyPricingForm = {
+    duration: "",
+    price: "",
+    offerPrice: "",
+  };
+
+  const [pricingForm, setPricingForm] = useState(emptyPricingForm);
+  const [editingPricingId, setEditingPricingId] = useState(null);
+
+  const loadPricingPlans = async (productId) => {
+    if (!productId) return;
+
+    setPricingLoading(true);
+
+    const { data, error } = await supabase
+      .from("product_prices")
+      .select("*")
+      .eq("product_id", productId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Pricing load error:", error);
+      setError(error.message);
+      setPricingPlans([]);
+    } else {
+      setPricingPlans(data || []);
+    }
+
+    setPricingLoading(false);
+  };
+
+  const openPricingManager = async (product) => {
+    setError("");
+    setPricingProduct(product);
+    setEditingPricingId(null);
+    setPricingForm(emptyPricingForm);
+
+    await loadPricingPlans(product.id);
+  };
+
+  const closePricingManager = () => {
+    setPricingProduct(null);
+    setPricingPlans([]);
+    setEditingPricingId(null);
+    setPricingForm(emptyPricingForm);
+  };
+
+  const handlePricingChange = (e) => {
+    const { name, value } = e.target;
+
+    setPricingForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+  const savePricing = async (e) => {
+    e.preventDefault();
+
+    if (!pricingProduct) return;
+
+    setError("");
+
+    if (!pricingForm.duration.trim()) {
+      setError("Duration is required.");
+      return;
+    }
+
+    if (pricingForm.price === "" || Number(pricingForm.price) < 0) {
+      setError("Please enter a valid price.");
+      return;
+    }
+
+    setPricingSaving(true);
+
+    const pricingData = {
+      product_id: pricingProduct.id,
+      duration: pricingForm.duration.trim(),
+      price: Number(pricingForm.price),
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (pricingForm.offerPrice !== "") {
+      pricingData.offer_price = Math.max(
+        0,
+        Number(pricingForm.offerPrice)
+      );
+    }
+
+    let result;
+
+    if (editingPricingId) {
+      result = await supabase
+        .from("product_prices")
+        .update(pricingData)
+        .eq("id", editingPricingId);
+    } else {
+      result = await supabase
+        .from("product_prices")
+        .insert(pricingData);
+    }
+
+    if (result.error) {
+      console.error("Pricing save error:", result.error);
+      setError(result.error.message);
+      setPricingSaving(false);
+      return;
+    }
+
+    setPricingForm(emptyPricingForm);
+    setEditingPricingId(null);
+
+    await loadPricingPlans(pricingProduct.id);
+
+    setPricingSaving(false);
+  };
+
+  const editPricing = (pricing) => {
+    setEditingPricingId(pricing.id);
+
+    setPricingForm({
+      duration: pricing.duration || "",
+      price: String(pricing.price ?? ""),
+      offerPrice:
+        pricing.offer_price === null ||
+        pricing.offer_price === undefined
+          ? ""
+          : String(pricing.offer_price),
+    });
+  };
+
+  const deletePricing = async (pricingId) => {
+    const confirmed = window.confirm(
+      "Delete this pricing plan?"
+    );
+
+    if (!confirmed) return;
+
+    setPricingDeleting(pricingId);
+    setError("");
+
+    const { error } = await supabase
+      .from("product_prices")
+      .delete()
+      .eq("id", pricingId);
+
+    if (error) {
+      console.error("Pricing delete error:", error);
+      setError(error.message);
+      setPricingDeleting(null);
+      return;
+    }
+
+    if (pricingProduct) {
+      await loadPricingPlans(pricingProduct.id);
+    }
+
+    setPricingDeleting(null);
+  };
+  const [form, setForm] = useState({
+
+    product_id: "",
+    duration: "7 Days",
+    keysText: "",
+  });
+
+  const loadData = async () => {
+    setLoading(true);
+    setError("");
+
+    const [productsResult, keysResult] = await Promise.all([
+      supabase
+        .from("products")
+        .select("*")
+        .order("created_at", { ascending: false }),
+
+      supabase
+        .from("product_keys")
+        .select(`
+          *,
+          products (
+            name
+          ),
+          users (
+            username,
+            telegram_id,
+            first_name
+          )
+        `)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (productsResult.error) {
+      console.error("Products load error:", productsResult.error);
+      setError(productsResult.error.message);
+    } else {
+      setProducts(productsResult.data || []);
+    }
+
+    if (keysResult.error) {
+      console.error("Keys load error:", keysResult.error);
+      setError(keysResult.error.message);
+      setKeys([]);
+    } else {
+      setKeys(keysResult.data || []);
+    }
+
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const addKeys = async (event) => {
+    event.preventDefault();
+
+    setError("");
+
+    if (!form.product_id) {
+      setError("Please select a product.");
+      return;
+    }
+
+    const rawKeys = form.keysText
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (rawKeys.length === 0) {
+      setError("Please enter at least one key.");
+      return;
+    }
+
+    // Remove duplicate keys from the pasted list.
+    const uniqueKeys = [...new Set(rawKeys)];
+
+    setSaving(true);
+
+    const rows = uniqueKeys.map((keyCode) => ({
+      product_id: Number(form.product_id),
+      key_code: keyCode,
+      duration: form.duration,
+      status: "available",
+    }));
+
+    const { error: insertError } = await supabase
+      .from("product_keys")
+      .insert(rows);
+
+    if (insertError) {
+      console.error("Key insert error:", insertError);
+      setError(insertError.message);
+    } else {
+      setForm({
+        product_id: form.product_id,
+        duration: form.duration,
+        keysText: "",
+      });
+
+      await loadData();
+    }
+
+    setSaving(false);
+  };
+
+  const deleteKey = async (id) => {
+    if (!window.confirm("Delete this key?")) return;
+
+    setDeleting(id);
+    setError("");
+
+    const { error: deleteError } = await supabase
+      .from("product_keys")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      console.error("Key delete error:", deleteError);
+      setError(deleteError.message);
+    } else {
+      await loadData();
+    }
+
+    setDeleting(null);
+  };
+
+  const filteredKeys = keys.filter((item) => {
+    const text = [
+      item.key_code,
+      item.status,
+      item.duration,
+      item.products?.name,
+      item.users?.username,
+      item.users?.telegram_id,
+      item.users?.first_name,
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return text.includes(search.toLowerCase());
+  });
+
+  const availableCount = keys.filter(
+    (item) => item.status === "available"
+  ).length;
+
+  const soldCount = keys.filter(
+    (item) =>
+      item.status === "sold" ||
+      item.status === "assigned" ||
+      item.assigned_to
+  ).length;
+
+  const expiredCount = keys.filter(
+    (item) =>
+      item.status === "expired" ||
+      (item.expires_at &&
+        new Date(item.expires_at).getTime() < Date.now())
+  ).length;
+
+  return (
+    <section className="page">
+      <div className="page-heading">
+        <div>
+          <h1>🔑 Key Management</h1>
+          <p>
+            Add, manage and track product keys.
+          </p>
+        </div>
+
+        <button type="button" onClick={loadData}>
+          🔄 Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div
+          style={{
+            marginBottom: "16px",
+            padding: "12px 14px",
+            borderRadius: "10px",
+            background: "rgba(239,68,68,0.12)",
+            border: "1px solid rgba(239,68,68,0.35)",
+            color: "#fca5a5",
+          }}
+        >
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* KEY OVERVIEW */}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: "14px",
+          marginBottom: "18px",
+        }}
+      >
+        <div className="stat-card">
+          <span>Total Keys</span>
+          <strong>{keys.length}</strong>
+        </div>
+
+        <div className="stat-card">
+          <span>Available</span>
+          <strong>{availableCount}</strong>
+        </div>
+
+        <div className="stat-card">
+          <span>Sold / Assigned</span>
+          <strong>{soldCount}</strong>
+        </div>
+
+        <div className="stat-card">
+          <span>Expired</span>
+          <strong>{expiredCount}</strong>
+        </div>
+      </div>
+
+      {/* ADD KEYS */}
+
       <div className="panel-card">
-        {activeTab === "deposits" && (
-          <EmptyPaymentState
-            title="No Deposits Yet"
-            description="Deposit records will appear here once users add funds."
-          />
-        )}
+        <div className="panel-header">
+          <div>
+            <h2>➕ Add Product Keys</h2>
+            <p>
+              Paste multiple keys, one key per line.
+            </p>
+          </div>
+        </div>
 
-        {activeTab === "history" && (
-          <EmptyPaymentState
-            title="No Payment History"
-            description="Completed and pending transactions will appear here."
-          />
-        )}
+        <form
+          onSubmit={addKeys}
+          style={{
+            display: "grid",
+            gap: "14px",
+            maxWidth: "760px",
+          }}
+        >
+          <label>
+            Product
 
-        {activeTab === "methods" && (
-          <EmptyPaymentState
-            title="Payment Methods"
-            description="Payment method configuration will be connected to Supabase next."
-          />
-        )}
+            <select
+              value={form.product_id}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  product_id: event.target.value,
+                })
+              }
+            >
+              <option value="">
+                Select Product
+              </option>
 
-        {activeTab === "settings" && (
-          <EmptyPaymentState
-            title="Panel Settings"
-            description="Security and panel configuration will be added here."
+              {products.map((product) => (
+                <option
+                  key={product.id}
+                  value={product.id}
+                >
+                  {product.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Duration
+
+            <select
+              value={form.duration}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  duration: event.target.value,
+                })
+              }
+            >
+              <option value="1 Day">1 Day</option>
+              <option value="2 Days">2 Days</option>
+              <option value="3 Days">3 Days</option>
+              <option value="7 Days">7 Days</option>
+              <option value="15 Days">15 Days</option>
+              <option value="30 Days">30 Days</option>
+              <option value="Lifetime">Lifetime</option>
+            </select>
+          </label>
+
+          <label>
+            Keys
+
+            <textarea
+              rows="8"
+              placeholder={`ABC-123-XYZ
+DEF-456-XYZ
+GHI-789-XYZ`}
+              value={form.keysText}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  keysText: event.target.value,
+                })
+              }
+            />
+          </label>
+
+          <button
+            type="submit"
+            disabled={saving}
+          >
+            {saving
+              ? "Adding Keys..."
+              : "🔑 Add Keys"}
+          </button>
+        </form>
+      </div>
+
+      {/* KEY INVENTORY */}
+
+      <div
+        className="panel-card"
+        style={{ marginTop: "18px" }}
+      >
+        <div className="panel-header">
+          <div>
+            <h2>📦 Key Inventory</h2>
+            <p>
+              View all uploaded and purchased keys.
+            </p>
+          </div>
+
+          <input
+            type="search"
+            placeholder="Search key / product / user..."
+            value={search}
+            onChange={(event) =>
+              setSearch(event.target.value)
+            }
+            style={{ maxWidth: "320px" }}
           />
+        </div>
+
+        {loading ? (
+          <div className="empty-state">
+            <h3>Loading Keys...</h3>
+            <p>
+              Please wait while keys are loaded.
+            </p>
+          </div>
+        ) : filteredKeys.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🔑</div>
+            <h3>No Keys Found</h3>
+            <p>
+              Add product keys above to create your inventory.
+            </p>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Product</th>
+                  <th>Duration</th>
+                  <th>Status</th>
+                  <th>User</th>
+                  <th>Expiry</th>
+                  <th>Created</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredKeys.map((item) => {
+                  const isExpired =
+                    item.expires_at &&
+                    new Date(item.expires_at).getTime() <
+                      Date.now();
+
+                  return (
+                    <tr key={item.id}>
+                      <td>
+                        <strong>
+                          {item.key_code}
+                        </strong>
+                      </td>
+
+                      <td>
+                        {item.products?.name || "—"}
+                      </td>
+
+                      <td>
+                        {item.duration || "—"}
+                      </td>
+
+                      <td>
+                        {isExpired
+                          ? "expired"
+                          : item.status || "available"}
+                      </td>
+
+                      <td>
+                        {item.users?.username
+                          ? `@${item.users.username}`
+                          : item.users?.telegram_id ||
+                            "—"}
+                      </td>
+
+                      <td>
+                        {item.expires_at
+                          ? new Date(
+                              item.expires_at
+                            ).toLocaleString()
+                          : "—"}
+                      </td>
+
+                      <td>
+                        {item.created_at
+                          ? new Date(
+                              item.created_at
+                            ).toLocaleString()
+                          : "—"}
+                      </td>
+
+                      <td>
+                        <button
+                          type="button"
+                          className="delete-btn"
+                          onClick={() =>
+                            deleteKey(item.id)
+                          }
+                          disabled={
+                            deleting === item.id
+                          }
+                        >
+                          {deleting === item.id
+                            ? "Deleting..."
+                            : "Delete"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </section>
