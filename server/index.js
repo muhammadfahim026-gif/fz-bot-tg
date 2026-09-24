@@ -405,6 +405,15 @@ function cleanCommand(command) {
     .toLowerCase();
 }
 
+function normalizeCommand(command) {
+  return String(command || "")
+    .trim()
+    .replace(/^\//, "")
+    .split(/\s+/)[0]
+    .split("@")[0]
+    .toLowerCase();
+}
+
 function safeText(value, fallback) {
   const text = String(
     value ?? ""
@@ -789,8 +798,7 @@ async function handleMessage(
   botId,
   message
 ) {
-  const chatId =
-    message?.chat?.id;
+  const chatId = message?.chat?.id;
 
   if (
     chatId === undefined ||
@@ -799,44 +807,29 @@ async function handleMessage(
     return;
   }
 
-  const user =
-    await saveTelegramUser(
-      message
-    );
+  const user = await saveTelegramUser(message);
 
-  const customization =
-    await getCustomization(
-      botId
-    );
+  const customization = await getCustomization(botId);
+  const commands = await getCommands();
+  const buttons = await getButtons();
 
-  const commands =
-    await getCommands();
+  const keyboard = buildKeyboard(buttons);
 
-  const buttons =
-    await getButtons();
+  const text = String(message.text || "").trim();
 
-  const keyboard =
-    buildKeyboard(buttons);
-
-  const text =
-    String(message.text || "")
-      .trim();
-
-  const command =
-    text.startsWith("/")
-      ? cleanCommand(text)
-      : "";
+  const command = text.startsWith("/")
+    ? cleanCommand(text)
+    : "";
 
   /* -----------------------------------------
      START
   ----------------------------------------- */
 
   if (command === "start") {
-    const welcome =
-      safeText(
-        customization.welcome_message,
-        "Welcome! Your bot is ready."
-      );
+    const welcome = safeText(
+      customization.welcome_message,
+      "Welcome! Your bot is ready."
+    );
 
     const payload = {
       chat_id: chatId,
@@ -845,8 +838,7 @@ async function handleMessage(
 
     if (keyboard.length > 0) {
       payload.reply_markup = {
-        inline_keyboard:
-          keyboard,
+        inline_keyboard: keyboard,
       };
     }
 
@@ -870,38 +862,104 @@ async function handleMessage(
   ----------------------------------------- */
 
   if (command) {
-    const matched =
-      commands.find(
-        (item) =>
-          cleanCommand(
-            item.command
-          ) === command
-      );
+    const matched = commands.find(
+      (item) =>
+        cleanCommand(item.command) === command &&
+        item.is_active !== false
+    );
 
     if (matched) {
-      const response =
-        safeText(
-          matched.response_message,
-          "Command received."
-        );
+      const response = safeText(
+        matched.response_message,
+        "Command received."
+      );
 
-      const payload = {
-        chat_id: chatId,
-        text: response.slice(0, 4096),
-      };
+      const mediaType = String(
+        matched.media_type || "none"
+      )
+        .trim()
+        .toLowerCase();
 
-      if (keyboard.length > 0) {
-        payload.reply_markup = {
-          inline_keyboard:
-            keyboard,
+      const mediaUrl = String(
+        matched.media_url || ""
+      ).trim();
+
+      /*
+       * PHOTO
+       */
+
+      if (
+        mediaType === "photo" &&
+        mediaUrl
+      ) {
+        const payload = {
+          chat_id: chatId,
+          photo: mediaUrl,
+          caption: response.slice(0, 1024),
         };
+
+        if (keyboard.length > 0) {
+          payload.reply_markup = {
+            inline_keyboard: keyboard,
+          };
+        }
+
+        await telegramApi(
+          token,
+          "sendPhoto",
+          payload
+        );
       }
 
-      await telegramApi(
-        token,
-        "sendMessage",
-        payload
-      );
+      /*
+       * VIDEO
+       */
+
+      else if (
+        mediaType === "video" &&
+        mediaUrl
+      ) {
+        const payload = {
+          chat_id: chatId,
+          video: mediaUrl,
+          caption: response.slice(0, 1024),
+        };
+
+        if (keyboard.length > 0) {
+          payload.reply_markup = {
+            inline_keyboard: keyboard,
+          };
+        }
+
+        await telegramApi(
+          token,
+          "sendVideo",
+          payload
+        );
+      }
+
+      /*
+       * NORMAL TEXT
+       */
+
+      else {
+        const payload = {
+          chat_id: chatId,
+          text: response.slice(0, 4096),
+        };
+
+        if (keyboard.length > 0) {
+          payload.reply_markup = {
+            inline_keyboard: keyboard,
+          };
+        }
+
+        await telegramApi(
+          token,
+          "sendMessage",
+          payload
+        );
+      }
 
       await logActivity(
         user?.id,
@@ -918,23 +976,27 @@ async function handleMessage(
   ----------------------------------------- */
 
   if (text) {
-    const defaultReply =
-      safeText(
-        customization.default_reply,
-        ""
-      );
+    const defaultReply = safeText(
+      customization.default_reply,
+      ""
+    );
 
     if (defaultReply) {
+      const payload = {
+        chat_id: chatId,
+        text: defaultReply.slice(0, 4096),
+      };
+
+      if (keyboard.length > 0) {
+        payload.reply_markup = {
+          inline_keyboard: keyboard,
+        };
+      }
+
       await telegramApi(
         token,
         "sendMessage",
-        {
-          chat_id: chatId,
-          text: defaultReply.slice(
-            0,
-            4096
-          ),
-        }
+        payload
       );
     }
   }
@@ -1924,8 +1986,8 @@ app.get(
       } = await adminSupabase
         .from("bot_commands")
         .select(
-          "id,command,response_message,is_active,created_at,updated_at"
-        )
+  "id,command,response_message,media_type,media_url,is_active,created_at,updated_at"
+)
         .order("id", {
           ascending: true,
         });
@@ -1962,10 +2024,12 @@ app.post(
   async (req, res) => {
     try {
       const {
-        command,
-        response_message,
-        is_active = true,
-      } = req.body || {};
+  command,
+  response_message,
+  media_type = "none",
+  media_url = "",
+  is_active = true,
+} = req.body || {};
 
       const cleanCommand =
         normalizeCommand(command);
@@ -1984,15 +2048,21 @@ app.post(
       } = await adminSupabase
         .from("bot_commands")
         .insert({
-          command:
-            `/${cleanCommand}`,
-          response_message:
-            String(
-              response_message ?? ""
-            ).trim(),
-          is_active:
-            Boolean(is_active),
-        })
+  command:
+    `/${cleanCommand}`,
+  response_message:
+    String(
+      response_message ?? ""
+    ).trim(),
+  media_type:
+    String(media_type || "none")
+      .trim()
+      .toLowerCase(),
+  media_url:
+    String(media_url || "").trim(),
+  is_active:
+    Boolean(is_active),
+})
         .select("*")
         .single();
 
@@ -2066,6 +2136,25 @@ app.put(
             response_message
           ).trim();
       }
+      if (
+  media_type !== undefined
+) {
+  updateData.media_type =
+    String(
+      media_type || "none"
+    )
+      .trim()
+      .toLowerCase();
+}
+
+if (
+  media_url !== undefined
+) {
+  updateData.media_url =
+    String(
+      media_url || ""
+    ).trim();
+}
 
       if (
         typeof is_active ===

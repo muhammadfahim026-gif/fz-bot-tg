@@ -466,13 +466,11 @@ function BotController() {
   const [commands, setCommands] = useState([]);
 
   const [commandForm, setCommandForm] = useState({
-  id: null,
-  command: "",
-  response_message: "",
-  media_type: "none",
-  media_url: "",
-  is_active: true,
-});
+    id: null,
+    command: "",
+    response_message: "",
+    is_active: true,
+  });
 
   /* BUTTONS */
   const [showButtons, setShowButtons] = useState(false);
@@ -832,13 +830,11 @@ function BotController() {
     setShowBotSettings(false);
 
     setCommandForm({
-  id: null,
-  command: "",
-  response_message: "",
-  media_type: "none",
-  media_url: "",
-  is_active: true,
-});
+      id: null,
+      command: "",
+      response_message: "",
+      is_active: true,
+    });
 
     await loadCommands();
   };
@@ -887,12 +883,10 @@ function BotController() {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-  command,
-  response_message: responseMessage,
-  media_type: commandForm.media_type || "none",
-  media_url: commandForm.media_url.trim(),
-  is_active: commandForm.is_active,
-}),
+          command,
+          response_message: responseMessage,
+          is_active: commandForm.is_active,
+        }),
       });
 
       const data = await response.json().catch(() => null);
@@ -926,22 +920,20 @@ function BotController() {
   };
 
   const editCommand = (item) => {
-  setCommandForm({
-    id: item.id,
-    command: String(item.command || "").replace(
-      /^\//,
-      ""
-    ),
-    response_message:
-      item.response_message || "",
-    media_type: item.media_type || "none",
-    media_url: item.media_url || "",
-    is_active: item.is_active !== false,
-  });
+    setCommandForm({
+      id: item.id,
+      command: String(item.command || "").replace(
+        /^\//,
+        ""
+      ),
+      response_message:
+        item.response_message || "",
+      is_active: item.is_active !== false,
+    });
 
-  setShowCommands(true);
-  setError("");
-};
+    setShowCommands(true);
+    setError("");
+  };
 
   const deleteCommand = async (commandId) => {
     const confirmed = window.confirm(
@@ -2403,61 +2395,6 @@ function BotController() {
                     placeholder="Enter command response..."
                   />
                 </label>
-                                <label>
-                  Media Type
-                  <select
-                    value={commandForm.media_type}
-                    onChange={(e) =>
-                      setCommandForm({
-                        ...commandForm,
-                        media_type: e.target.value,
-                        media_url:
-                          e.target.value === "none"
-                            ? ""
-                            : commandForm.media_url,
-                      })
-                    }
-                  >
-                    <option value="none">No Media</option>
-                    <option value="photo">Photo</option>
-                    <option value="video">Video</option>
-                  </select>
-                </label>
-
-                {commandForm.media_type !== "none" && (
-                  <label>
-                    {commandForm.media_type === "photo"
-                      ? "Photo URL"
-                      : "Video URL"}
-
-                    <input
-                      type="url"
-                      value={commandForm.media_url}
-                      onChange={(e) =>
-                        setCommandForm({
-                          ...commandForm,
-                          media_url: e.target.value,
-                        })
-                      }
-                      placeholder={
-                        commandForm.media_type === "photo"
-                          ? "https://example.com/photo.jpg"
-                          : "https://example.com/video.mp4"
-                      }
-                    />
-
-                    <small
-                      style={{
-                        display: "block",
-                        marginTop: "6px",
-                        opacity: 0.7,
-                      }}
-                    >
-                      Direct public URL use karo. Telegram bot ko
-                      media access karna chahiye.
-                    </small>
-                  </label>
-                )}
 
                 <label
                   style={{
@@ -2950,40 +2887,16 @@ function Products() {
     offerPrice: "",
   };
 
-  const emptyPriceForm = {
-    duration: "",
-    price: "",
-  };
-
   const [products, setProducts] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState("");
-
   const [search, setSearch] = useState("");
 
-  /* =========================
-     PRICING STATES
-  ========================= */
-
-  const [selectedProductId, setSelectedProductId] = useState(null);
-  const [prices, setPrices] = useState([]);
-  const [priceLoading, setPriceLoading] = useState(false);
-  const [priceSaving, setPriceSaving] = useState(false);
-  const [priceDeletingId, setPriceDeletingId] = useState(null);
-  const [priceError, setPriceError] = useState("");
-  const [priceForm, setPriceForm] = useState(emptyPriceForm);
-  const [editingPriceId, setEditingPriceId] = useState(null);
-
   const [form, setForm] = useState(emptyForm);
-
-  /* =========================
-     PRODUCT FUNCTIONS
-  ========================= */
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -3142,216 +3055,12 @@ function Products() {
       previous.filter((product) => product.id !== id)
     );
 
-    if (selectedProductId === id) {
-      setSelectedProductId(null);
-      setPrices([]);
-    }
-
     if (editingId === id) {
       closeForm();
     }
 
     setDeletingId(null);
   };
-
-  /* =========================
-     PRICING FUNCTIONS
-  ========================= */
-
-  const resetPriceForm = () => {
-    setPriceForm(emptyPriceForm);
-    setEditingPriceId(null);
-  };
-
-  const loadPrices = async (productId) => {
-    if (!productId) {
-      setPrices([]);
-      return;
-    }
-
-    setPriceLoading(true);
-    setPriceError("");
-
-    const { data, error: fetchError } = await supabase
-      .from("product_prices")
-      .select("*")
-      .eq("product_id", productId)
-      .order("created_at", { ascending: true });
-
-    if (fetchError) {
-      console.error("Product pricing load error:", fetchError);
-      setPriceError(fetchError.message);
-      setPrices([]);
-    } else {
-      setPrices(data || []);
-    }
-
-    setPriceLoading(false);
-  };
-
-  const openPricing = async (productId) => {
-    setSelectedProductId(productId);
-    resetPriceForm();
-    setPriceError("");
-
-    await loadPrices(productId);
-  };
-
-  const closePricing = () => {
-    setSelectedProductId(null);
-    setPrices([]);
-    resetPriceForm();
-    setPriceError("");
-  };
-
-  const handlePriceChange = (e) => {
-    const { name, value } = e.target;
-
-    setPriceForm((previous) => ({
-      ...previous,
-      [name]: value,
-    }));
-  };
-
-  const editPricing = (priceItem) => {
-    setEditingPriceId(priceItem.id);
-
-    setPriceForm({
-      duration: priceItem.duration || "",
-      price: String(priceItem.price ?? ""),
-    });
-
-    setPriceError("");
-  };
-
-  const savePricing = async (e) => {
-    e.preventDefault();
-
-    setPriceError("");
-
-    if (!selectedProductId) {
-      setPriceError("Please select a product first.");
-      return;
-    }
-
-    if (!priceForm.duration.trim()) {
-      setPriceError("Duration is required.");
-      return;
-    }
-
-    const priceValue = Number(priceForm.price);
-
-    if (!Number.isFinite(priceValue) || priceValue < 0) {
-      setPriceError("Please enter a valid price.");
-      return;
-    }
-
-    setPriceSaving(true);
-
-    const priceData = {
-      product_id: selectedProductId,
-      duration: priceForm.duration.trim(),
-      price: priceValue,
-      is_active: true,
-      updated_at: new Date().toISOString(),
-    };
-
-    let result;
-
-    if (editingPriceId) {
-      result = await supabase
-        .from("product_prices")
-        .update({
-          duration: priceData.duration,
-          price: priceData.price,
-          updated_at: priceData.updated_at,
-        })
-        .eq("id", editingPriceId);
-    } else {
-      result = await supabase
-        .from("product_prices")
-        .insert(priceData);
-    }
-
-    if (result.error) {
-      console.error("Pricing save error:", result.error);
-      setPriceError(result.error.message);
-      setPriceSaving(false);
-      return;
-    }
-
-    resetPriceForm();
-
-    await loadPrices(selectedProductId);
-
-    setPriceSaving(false);
-  };
-
-  const deletePricing = async (priceId) => {
-    const confirmed = window.confirm(
-      "Delete this pricing plan?"
-    );
-
-    if (!confirmed) return;
-
-    setPriceError("");
-    setPriceDeletingId(priceId);
-
-    const { error: deleteError } = await supabase
-      .from("product_prices")
-      .delete()
-      .eq("id", priceId);
-
-    if (deleteError) {
-      console.error("Pricing delete error:", deleteError);
-      setPriceError(deleteError.message);
-      setPriceDeletingId(null);
-      return;
-    }
-
-    setPrices((previous) =>
-      previous.filter((item) => item.id !== priceId)
-    );
-
-    if (editingPriceId === priceId) {
-      resetPriceForm();
-    }
-
-    setPriceDeletingId(null);
-  };
-
-  const togglePricing = async (priceItem) => {
-    setPriceError("");
-
-    const { error: updateError } = await supabase
-      .from("product_prices")
-      .update({
-        is_active: !priceItem.is_active,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", priceItem.id);
-
-    if (updateError) {
-      console.error("Pricing status error:", updateError);
-      setPriceError(updateError.message);
-      return;
-    }
-
-    setPrices((previous) =>
-      previous.map((item) =>
-        item.id === priceItem.id
-          ? {
-              ...item,
-              is_active: !item.is_active,
-            }
-          : item
-      )
-    );
-  };
-
-  /* =========================
-     SEARCH
-  ========================= */
 
   const filteredProducts = products.filter((product) => {
     const searchableText = [
@@ -3368,32 +3077,19 @@ function Products() {
     return searchableText.includes(search.toLowerCase());
   });
 
-  const selectedProduct = products.find(
-    (product) => product.id === selectedProductId
-  );
-
   return (
     <section className="page">
-
-      {/* =========================
-          PAGE HEADER
-      ========================= */}
 
       <div className="page-heading">
         <div>
           <h1>Products</h1>
           <p>
-            Add and manage products, pricing, duration and stock.
+            Add and manage your products, pricing, duration and stock.
           </p>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", gap: "10px" }}>
+
           <button
             className="primary-btn"
             onClick={loadProducts}
@@ -3408,14 +3104,13 @@ function Products() {
             onClick={showForm ? closeForm : openAddForm}
             type="button"
           >
-            {showForm ? "Close" : "+ Add Product"}
+            {showForm
+              ? "Close"
+              : "+ Add Product"}
           </button>
+
         </div>
       </div>
-
-      {/* =========================
-          ERROR
-      ========================= */}
 
       {error && (
         <div
@@ -3431,10 +3126,6 @@ function Products() {
           {error}
         </div>
       )}
-
-      {/* =========================
-          PRODUCT FORM
-      ========================= */}
 
       {showForm && (
         <div className="panel-card product-form-card">
@@ -3486,7 +3177,7 @@ function Products() {
             />
 
             <FormInput
-              label="Base Price"
+              label="Price"
               name="price"
               type="number"
               min="0"
@@ -3497,7 +3188,7 @@ function Products() {
             />
 
             <FormInput
-              label="Base Duration"
+              label="Duration"
               name="duration"
               value={form.duration}
               onChange={handleChange}
@@ -3538,7 +3229,6 @@ function Products() {
               style={{
                 display: "flex",
                 gap: "10px",
-                flexWrap: "wrap",
               }}
             >
 
@@ -3570,17 +3260,12 @@ function Products() {
         </div>
       )}
 
-      {/* =========================
-          PRODUCT LIST
-      ========================= */}
-
       <div className="panel-card">
 
         <div className="panel-header">
 
           <div>
             <h2>Product List</h2>
-
             <p>
               {filteredProducts.length} product(s) shown
               {" "}•{" "}
@@ -3598,7 +3283,6 @@ function Products() {
         </div>
 
         {loading ? (
-
           <div className="empty-state">
             <div className="empty-icon">◷</div>
             <h3>Loading Products...</h3>
@@ -3635,22 +3319,13 @@ function Products() {
                 product.offer_price !== null &&
                 product.offer_price !== undefined &&
                 product.offer_price !== "" &&
-                Number(product.offer_price) <
-                  Number(product.price);
-
-              const isPricingOpen =
-                selectedProductId === product.id;
+                Number(product.offer_price) < Number(product.price);
 
               return (
                 <div
                   className="product-row"
                   key={product.id}
-                  style={{
-                    alignItems: "flex-start",
-                  }}
                 >
-
-                  {/* PRODUCT INFO */}
 
                   <div>
 
@@ -3681,8 +3356,6 @@ function Products() {
                     )}
 
                   </div>
-
-                  {/* PRODUCT PRICE */}
 
                   <div className="product-price">
 
@@ -3718,8 +3391,6 @@ function Products() {
 
                   </div>
 
-                  {/* ACTIONS */}
-
                   <div
                     style={{
                       display: "flex",
@@ -3727,20 +3398,6 @@ function Products() {
                       flexWrap: "wrap",
                     }}
                   >
-
-                    <button
-                      type="button"
-                      className="primary-btn"
-                      onClick={() =>
-                        isPricingOpen
-                          ? closePricing()
-                          : openPricing(product.id)
-                      }
-                    >
-                      {isPricingOpen
-                        ? "Close Pricing"
-                        : "💰 Pricing"}
-                    </button>
 
                     <button
                       type="button"
@@ -3768,351 +3425,6 @@ function Products() {
                     </button>
 
                   </div>
-
-                  {/* =========================
-                      PRICING MANAGER
-                  ========================= */}
-
-                  {isPricingOpen && (
-                    <div
-                      style={{
-                        gridColumn: "1 / -1",
-                        width: "100%",
-                        marginTop: "14px",
-                        padding: "16px",
-                        borderRadius: "12px",
-                        border:
-                          "1px solid rgba(255,255,255,0.10)",
-                        background:
-                          "rgba(255,255,255,0.025)",
-                      }}
-                    >
-
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent:
-                            "space-between",
-                          alignItems: "center",
-                          gap: "10px",
-                          flexWrap: "wrap",
-                          marginBottom: "14px",
-                        }}
-                      >
-
-                        <div>
-                          <h3
-                            style={{
-                              margin: 0,
-                            }}
-                          >
-                            💰 Pricing Plans
-                          </h3>
-
-                          <p
-                            style={{
-                              margin:
-                                "5px 0 0",
-                              opacity: 0.7,
-                            }}
-                          >
-                            {selectedProduct?.name ||
-                              "Product"}{" "}
-                            • Multiple plans
-                          </p>
-                        </div>
-
-                        <span
-                          style={{
-                            padding:
-                              "6px 10px",
-                            borderRadius:
-                              "999px",
-                            background:
-                              "rgba(0,200,120,0.10)",
-                            border:
-                              "1px solid rgba(0,200,120,0.20)",
-                            fontSize:
-                              "12px",
-                          }}
-                        >
-                          {prices.length} plan(s)
-                        </span>
-
-                      </div>
-
-                      {priceError && (
-                        <div
-                          style={{
-                            marginBottom: "12px",
-                            padding:
-                              "10px 12px",
-                            borderRadius: "9px",
-                            background:
-                              "rgba(255,70,70,0.10)",
-                            border:
-                              "1px solid rgba(255,70,70,0.25)",
-                            color: "#ff7777",
-                          }}
-                        >
-                          {priceError}
-                        </div>
-                      )}
-
-                      {/* ADD / EDIT PRICE FORM */}
-
-                      <form
-                        onSubmit={savePricing}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns:
-                            "minmax(160px, 1fr) minmax(120px, 180px) auto",
-                          gap: "10px",
-                          marginBottom:
-                            "16px",
-                        }}
-                      >
-
-                        <input
-                          className="search-input"
-                          name="duration"
-                          value={
-                            priceForm.duration
-                          }
-                          onChange={
-                            handlePriceChange
-                          }
-                          placeholder="Duration e.g. 7 Days"
-                          required
-                        />
-
-                        <input
-                          className="search-input"
-                          name="price"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={
-                            priceForm.price
-                          }
-                          onChange={
-                            handlePriceChange
-                          }
-                          placeholder="Price ₹"
-                          required
-                        />
-
-                        <button
-                          type="submit"
-                          className="primary-btn"
-                          disabled={
-                            priceSaving
-                          }
-                        >
-                          {priceSaving
-                            ? "Saving..."
-                            : editingPriceId
-                            ? "Update"
-                            : "+ Add Plan"}
-                        </button>
-
-                      </form>
-
-                      {editingPriceId && (
-                        <button
-                          type="button"
-                          className="secondary-btn"
-                          onClick={
-                            resetPriceForm
-                          }
-                          style={{
-                            marginBottom:
-                              "12px",
-                          }}
-                        >
-                          Cancel Pricing Edit
-                        </button>
-                      )}
-
-                      {/* PRICE LIST */}
-
-                      {priceLoading ? (
-
-                        <div
-                          style={{
-                            padding: "15px",
-                            textAlign: "center",
-                            opacity: 0.7,
-                          }}
-                        >
-                          Loading pricing...
-                        </div>
-
-                      ) : prices.length === 0 ? (
-
-                        <div
-                          style={{
-                            padding: "18px",
-                            textAlign: "center",
-                            borderRadius: "10px",
-                            border:
-                              "1px dashed rgba(255,255,255,0.15)",
-                            opacity: 0.7,
-                          }}
-                        >
-                          No pricing plans yet.
-                          Add the first plan above.
-                        </div>
-
-                      ) : (
-
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection:
-                              "column",
-                            gap: "8px",
-                          }}
-                        >
-
-                          {prices.map(
-                            (priceItem) => (
-                              <div
-                                key={
-                                  priceItem.id
-                                }
-                                style={{
-                                  display:
-                                    "flex",
-                                  justifyContent:
-                                    "space-between",
-                                  alignItems:
-                                    "center",
-                                  gap: "12px",
-                                  flexWrap:
-                                    "wrap",
-                                  padding:
-                                    "12px",
-                                  borderRadius:
-                                    "10px",
-                                  border:
-                                    "1px solid rgba(255,255,255,0.08)",
-                                  background:
-                                    "rgba(255,255,255,0.02)",
-                                }}
-                              >
-
-                                <div>
-                                  <strong>
-                                    {priceItem.duration}
-                                  </strong>
-
-                                  <div
-                                    style={{
-                                      marginTop:
-                                        "4px",
-                                      fontSize:
-                                        "18px",
-                                      fontWeight:
-                                        "700",
-                                    }}
-                                  >
-                                    ₹
-                                    {Number(
-                                      priceItem.price ||
-                                        0
-                                    ).toFixed(2)}
-                                  </div>
-                                </div>
-
-                                <div
-                                  style={{
-                                    display:
-                                      "flex",
-                                    gap:
-                                      "7px",
-                                    flexWrap:
-                                      "wrap",
-                                    alignItems:
-                                      "center",
-                                  }}
-                                >
-
-                                  <span
-                                    style={{
-                                      padding:
-                                        "5px 9px",
-                                      borderRadius:
-                                        "999px",
-                                      fontSize:
-                                        "11px",
-                                      background:
-                                        priceItem.is_active
-                                          ? "rgba(0,200,120,0.10)"
-                                          : "rgba(255,255,255,0.07)",
-                                    }}
-                                  >
-                                    {priceItem.is_active
-                                      ? "ACTIVE"
-                                      : "INACTIVE"}
-                                  </span>
-
-                                  <button
-                                    type="button"
-                                    className="secondary-btn"
-                                    onClick={() =>
-                                      editPricing(
-                                        priceItem
-                                      )
-                                    }
-                                  >
-                                    Edit
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="secondary-btn"
-                                    onClick={() =>
-                                      togglePricing(
-                                        priceItem
-                                      )
-                                    }
-                                  >
-                                    {priceItem.is_active
-                                      ? "Disable"
-                                      : "Enable"}
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="delete-btn"
-                                    onClick={() =>
-                                      deletePricing(
-                                        priceItem.id
-                                      )
-                                    }
-                                    disabled={
-                                      priceDeletingId ===
-                                      priceItem.id
-                                    }
-                                  >
-                                    {priceDeletingId ===
-                                    priceItem.id
-                                      ? "Deleting..."
-                                      : "Delete"}
-                                  </button>
-
-                                </div>
-
-                              </div>
-                            )
-                          )}
-
-                        </div>
-                      )}
-
-                    </div>
-                  )}
 
                 </div>
               );
