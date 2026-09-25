@@ -481,23 +481,261 @@ function BotController() {
   const [buttons, setButtons] = useState([]);
 
   const [buttonForm, setButtonForm] = useState({
-    id: null,
-    button_text: "",
-    button_type: "url",
-    button_value: "",
-    position: 0,
-    is_active: true,
-  });
-
+  id: null,
+  button_text: "",
+  button_type: "callback",
+  button_value: "",
+  action_type: "screen",
+  product_id: "",
+  price_id: "",
+  target_screen_id: "",
+  callback_data: "",
+  position: 0,
+  is_active: true,
+});
   /* BOT STATUS */
   const [botActionLoading, setBotActionLoading] = useState(false);
 
   const API_BASE = "";
 
+  /* SCREENS & MENUS */
+  const [showScreens, setShowScreens] = useState(false);
+  const [screensLoading, setScreensLoading] = useState(false);
+  const [screenSaving, setScreenSaving] = useState(false);
+  const [screens, setScreens] = useState([]);
+  const [selectedScreenId, setSelectedScreenId] = useState(null);
+
+  const [screenForm, setScreenForm] = useState({
+    id: null,
+    screen_key: "",
+    title: "",
+    message_text: "",
+    media_type: "none",
+    media_url: "",
+    parent_screen_id: "",
+    position: 0,
+    is_active: true,
+  });  
+
   /* =========================
      SESSION
   ========================= */
 
+    const loadScreens = async () => {
+    if (!bot?.id) return;
+
+    setScreensLoading(true);
+    setError("");
+
+    try {
+      const accessToken = await getAccessToken();
+
+      const response = await fetch(
+        `${API_BASE}/api/bots/${bot.id}/screens`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || "Unable to load screens."
+        );
+      }
+
+      setScreens(
+        Array.isArray(data.screens)
+          ? data.screens
+          : []
+      );
+    } catch (err) {
+      console.error("Screens load error:", err);
+      setError(
+        err.message || "Unable to load screens."
+      );
+    } finally {
+      setScreensLoading(false);
+    }
+  };
+
+  const openScreens = async () => {
+    setShowScreens(true);
+    setShowButtons(false);
+    setShowCommands(false);
+    setShowBotSettings(false);
+
+    setScreenForm({
+      id: null,
+      screen_key: "",
+      title: "",
+      message_text: "",
+      media_type: "none",
+      media_url: "",
+      parent_screen_id: "",
+      position: screens.length,
+      is_active: true,
+    });
+
+    await loadScreens();
+  };
+
+  const resetScreenForm = () => {
+    setScreenForm({
+      id: null,
+      screen_key: "",
+      title: "",
+      message_text: "",
+      media_type: "none",
+      media_url: "",
+      parent_screen_id: "",
+      position: screens.length,
+      is_active: true,
+    });
+  };
+
+  const saveScreen = async () => {
+    if (!bot?.id) return;
+
+    const key = screenForm.screen_key.trim();
+    const title = screenForm.title.trim();
+    const message = screenForm.message_text.trim();
+
+    if (!key) {
+      setError("Screen key is required.");
+      return;
+    }
+
+    if (!title) {
+      setError("Screen title is required.");
+      return;
+    }
+
+    setScreenSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const accessToken = await getAccessToken();
+
+      const editing = Boolean(screenForm.id);
+
+      const url = editing
+        ? `${API_BASE}/api/bots/${bot.id}/screens/${screenForm.id}`
+        : `${API_BASE}/api/bots/${bot.id}/screens`;
+
+      const response = await fetch(url, {
+        method: editing ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          screen_key: key,
+          title,
+          message_text: message,
+          media_type: screenForm.media_type,
+          media_url: screenForm.media_url.trim(),
+          parent_screen_id:
+            screenForm.parent_screen_id === ""
+              ? null
+              : Number(screenForm.parent_screen_id),
+          position: Number(screenForm.position) || 0,
+          is_active: screenForm.is_active,
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || "Screen save failed."
+        );
+      }
+
+      setSuccess(
+        editing
+          ? "Screen updated successfully."
+          : "Screen created successfully."
+      );
+
+      resetScreenForm();
+      await loadScreens();
+    } catch (err) {
+      console.error("Screen save error:", err);
+      setError(
+        err.message || "Screen save failed."
+      );
+    } finally {
+      setScreenSaving(false);
+    }
+  };
+
+  const editScreen = (screen) => {
+    setScreenForm({
+      id: screen.id,
+      screen_key: screen.screen_key || "",
+      title: screen.title || "",
+      message_text: screen.message_text || "",
+      media_type: screen.media_type || "none",
+      media_url: screen.media_url || "",
+      parent_screen_id:
+        screen.parent_screen_id ?? "",
+      position: screen.position ?? 0,
+      is_active: screen.is_active !== false,
+    });
+
+    setSelectedScreenId(screen.id);
+  };
+
+  const deleteScreen = async (screen) => {
+    const confirmed = window.confirm(
+      `Delete "${screen.title}" screen?`
+    );
+
+    if (!confirmed) return;
+
+    setError("");
+    setSuccess("");
+
+    try {
+      const accessToken = await getAccessToken();
+
+      const response = await fetch(
+        `${API_BASE}/api/bots/${bot.id}/screens/${screen.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || "Screen delete failed."
+        );
+      }
+
+      if (selectedScreenId === screen.id) {
+        setSelectedScreenId(null);
+      }
+
+      setSuccess("Screen deleted successfully.");
+
+      await loadScreens();
+    } catch (err) {
+      console.error("Screen delete error:", err);
+      setError(
+        err.message || "Screen delete failed."
+      );
+    }
+  };
   const getAccessToken = async () => {
     const { data, error: sessionError } =
       await supabase.auth.getSession();
@@ -1640,6 +1878,33 @@ function BotController() {
             </button>
 
             <button
+  type="button"
+  className="feature-card"
+  onClick={() => {
+    setShowBotSettings(false);
+    setShowCommands(false);
+    setShowButtons(false);
+    openScreens();
+  }}
+  style={{
+    textAlign: "left",
+    cursor: "pointer",
+    width: "100%",
+    border: "none",
+  }}
+>
+  <div className="feature-icon">🖥️</div>
+
+  <div>
+    <h3>Screens & Menus</h3>
+    <p>
+      Create and manage Main Menu, Products,
+      Balance, Profile, Support and other screens.
+    </p>
+  </div>
+</button>
+
+            <button
               type="button"
               className="feature-card"
               onClick={() => {
@@ -2515,6 +2780,143 @@ function BotController() {
                   )}
                 </div>
               </div>
+                          {/* LIVE PREVIEW */}
+
+              <div
+                style={{
+                  marginTop: "10px",
+                  marginBottom: "24px",
+                  maxWidth: "720px",
+                }}
+              >
+                <h3
+                  style={{
+                    marginBottom: "10px",
+                  }}
+                >
+                  👀 Live Preview
+                </h3>
+
+                <div
+                  style={{
+                    background: "#17212b",
+                    borderRadius: "14px",
+                    padding: "16px",
+                    maxWidth: "420px",
+                    color: "#ffffff",
+                    boxShadow:
+                      "0 8px 30px rgba(0,0,0,0.25)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      opacity: 0.65,
+                      marginBottom: "10px",
+                    }}
+                  >
+                    FZ BOT TG • Telegram Preview
+                  </div>
+
+                  {commandForm.media_type === "photo" &&
+                    commandForm.media_url && (
+                      <img
+                        src={commandForm.media_url}
+                        alt="Command media preview"
+                        style={{
+                          width: "100%",
+                          maxHeight: "240px",
+                          objectFit: "cover",
+                          borderRadius: "10px",
+                          marginBottom: "12px",
+                        }}
+                        onError={(e) => {
+                          e.currentTarget.style.display =
+                            "none";
+                        }}
+                      />
+                    )}
+
+                  {commandForm.media_type === "video" &&
+                    commandForm.media_url && (
+                      <video
+                        src={commandForm.media_url}
+                        controls
+                        style={{
+                          width: "100%",
+                          maxHeight: "240px",
+                          borderRadius: "10px",
+                          marginBottom: "12px",
+                        }}
+                      />
+                    )}
+
+                  <div
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      fontSize: "15px",
+                      lineHeight: "1.5",
+                    }}
+                  >
+                    {commandForm.response_message ||
+                      "Your response message will appear here..."}
+                  </div>
+
+                  {commandForm.command && (
+                    <div
+                      style={{
+                        marginTop: "12px",
+                        fontSize: "12px",
+                        opacity: 0.55,
+                      }}
+                    >
+                      Command: /{commandForm.command.replace(
+                        /^\//,
+                        ""
+                      )}
+                    </div>
+                  )}
+                </div>
+               {/* BUTTON PREVIEW */}
+
+{buttons.filter((button) => button.is_active !== false).length > 0 && (
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+      gap: "8px",
+      marginTop: "14px",
+    }}
+  >
+    {buttons
+      .filter((button) => button.is_active !== false)
+      .sort(
+        (a, b) =>
+          Number(a.position || 0) -
+          Number(b.position || 0)
+      )
+      .map((button) => (
+        <button
+          key={button.id}
+          type="button"
+          style={{
+            border: "none",
+            borderRadius: "8px",
+            padding: "10px 12px",
+            background: "#2481cc",
+            color: "#ffffff",
+            fontSize: "13px",
+            fontWeight: "600",
+            cursor: "default",
+          }}
+        >
+          {button.button_text || "Button"}
+        </button>
+      ))}
+  </div>
+)} 
+              </div>
 
               {/* COMMAND LIST */}
 
@@ -2930,6 +3332,288 @@ function BotController() {
           )}
         </>
       )}
+      {/* SCREENS & MENUS PANEL */}
+{showScreens && (
+  <section className="panel-section">
+    <div className="section-header">
+      <div>
+        <h2>Screens & Menus</h2>
+        <p>
+          Telegram bot ke different screens aur menus yahan manage karo.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        className="primary-btn"
+        onClick={resetScreenForm}
+      >
+        + New Screen
+      </button>
+    </div>
+
+    {screensLoading ? (
+      <div className="empty-state">
+        Loading screens...
+      </div>
+    ) : (
+      <div className="screen-layout">
+
+        {/* SCREEN LIST */}
+        <div className="screen-list">
+          <h3>Bot Screens</h3>
+
+          {screens.length === 0 ? (
+            <div className="empty-state">
+              <p>No screens created yet.</p>
+
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={resetScreenForm}
+              >
+                Create First Screen
+              </button>
+            </div>
+          ) : (
+            screens.map((screen) => (
+              <button
+                key={screen.id}
+                type="button"
+                className={`screen-item ${
+                  selectedScreenId === screen.id
+                    ? "active"
+                    : ""
+                }`}
+                onClick={() => {
+                  setSelectedScreenId(screen.id);
+                  editScreen(screen);
+                }}
+              >
+                <div>
+                  <strong>
+                    {screen.title || screen.screen_key}
+                  </strong>
+
+                  <small>
+                    {screen.screen_key}
+                  </small>
+                </div>
+
+                <span>→</span>
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* SCREEN EDITOR */}
+        <div className="screen-editor">
+          <h3>
+            {screenForm.id
+              ? "Edit Screen"
+              : "Create Screen"}
+          </h3>
+
+          <div className="form-grid">
+
+            <div className="form-group">
+              <label>Screen Key</label>
+
+              <input
+                type="text"
+                value={screenForm.screen_key}
+                onChange={(e) =>
+                  setScreenForm((prev) => ({
+                    ...prev,
+                    screen_key: e.target.value,
+                  }))
+                }
+                placeholder="main_menu"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Screen Title</label>
+
+              <input
+                type="text"
+                value={screenForm.title}
+                onChange={(e) =>
+                  setScreenForm((prev) => ({
+                    ...prev,
+                    title: e.target.value,
+                  }))
+                }
+                placeholder="Main Menu"
+              />
+            </div>
+
+          </div>
+
+          <div className="form-group">
+            <label>Message</label>
+
+            <textarea
+              rows="6"
+              value={screenForm.message_text}
+              onChange={(e) =>
+                setScreenForm((prev) => ({
+                  ...prev,
+                  message_text: e.target.value,
+                }))
+              }
+              placeholder="Welcome to FZ BOT TG..."
+            />
+          </div>
+
+          <div className="form-grid">
+
+            <div className="form-group">
+              <label>Media Type</label>
+
+              <select
+                value={screenForm.media_type}
+                onChange={(e) =>
+                  setScreenForm((prev) => ({
+                    ...prev,
+                    media_type: e.target.value,
+                  }))
+                }
+              >
+                <option value="none">No Media</option>
+                <option value="photo">Photo</option>
+                <option value="video">Video</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Media URL</label>
+
+              <input
+                type="text"
+                value={screenForm.media_url}
+                onChange={(e) =>
+                  setScreenForm((prev) => ({
+                    ...prev,
+                    media_url: e.target.value,
+                  }))
+                }
+                placeholder="https://..."
+              />
+            </div>
+
+          </div>
+
+          <div className="form-grid">
+
+            <div className="form-group">
+              <label>Parent Screen</label>
+
+              <select
+                value={screenForm.parent_screen_id}
+                onChange={(e) =>
+                  setScreenForm((prev) => ({
+                    ...prev,
+                    parent_screen_id: e.target.value,
+                  }))
+                }
+              >
+                <option value="">
+                  No Parent
+                </option>
+
+                {screens
+                  .filter(
+                    (screen) =>
+                      screen.id !== screenForm.id
+                  )
+                  .map((screen) => (
+                    <option
+                      key={screen.id}
+                      value={screen.id}
+                    >
+                      {screen.title ||
+                        screen.screen_key}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Position</label>
+
+              <input
+                type="number"
+                value={screenForm.position}
+                onChange={(e) =>
+                  setScreenForm((prev) => ({
+                    ...prev,
+                    position:
+                      Number(e.target.value) || 0,
+                  }))
+                }
+              />
+            </div>
+
+          </div>
+
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={screenForm.is_active}
+              onChange={(e) =>
+                setScreenForm((prev) => ({
+                  ...prev,
+                  is_active: e.target.checked,
+                }))
+              }
+            />
+
+            <span>Screen Active</span>
+          </label>
+
+          <div className="form-actions">
+
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={saveScreen}
+              disabled={screenSaving}
+            >
+              {screenSaving
+                ? "Saving..."
+                : screenForm.id
+                ? "Update Screen"
+                : "Create Screen"}
+            </button>
+
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={resetScreenForm}
+            >
+              Clear
+            </button>
+
+            {screenForm.id && (
+              <button
+                type="button"
+                className="danger-btn"
+                onClick={() =>
+                  deleteScreen(screenForm)
+                }
+              >
+                Delete
+              </button>
+            )}
+
+          </div>
+
+        </div>
+      </div>
+    )}
+  </section>
+)}
     </section>
   );
 }
@@ -2938,6 +3622,484 @@ function BotController() {
    PRODUCTS
 ========================= */
 
+function PurchasePanel() {
+  const [products, setProducts] = useState([]);
+  const [prices, setPrices] = useState([]);
+  const [methods, setMethods] = useState([]);
+
+  const [selectedProductId, setSelectedProductId] = useState("");
+  const [selectedDuration, setSelectedDuration] = useState("");
+  const [transactionId, setTransactionId] = useState("");
+
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [loadingPrices, setLoadingPrices] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    loadPurchaseData();
+  }, []);
+
+  const loadPurchaseData = async () => {
+    setLoadingProducts(true);
+    setError("");
+
+    const [productsResult, methodsResult] =
+      await Promise.all([
+        supabase
+          .from("products")
+          .select("*")
+          .order("created_at", { ascending: false }),
+
+        supabase
+          .from("payment_methods")
+          .select("*")
+          .eq("is_active", true)
+          .order("position", { ascending: true }),
+      ]);
+
+    if (productsResult.error) {
+      setError(productsResult.error.message);
+      setProducts([]);
+    } else {
+      setProducts(productsResult.data || []);
+    }
+
+    if (methodsResult.error) {
+      setError(methodsResult.error.message);
+      setMethods([]);
+    } else {
+      setMethods(methodsResult.data || []);
+    }
+
+    setLoadingProducts(false);
+  };
+
+  const loadPrices = async (productId) => {
+    if (!productId) {
+      setPrices([]);
+      setSelectedDuration("");
+      return;
+    }
+
+    setLoadingPrices(true);
+    setError("");
+
+    const { data, error: priceError } = await supabase
+      .from("product_prices")
+      .select("*")
+      .eq("product_id", productId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true });
+
+    if (priceError) {
+      setError(priceError.message);
+      setPrices([]);
+    } else {
+      setPrices(data || []);
+    }
+
+    setSelectedDuration("");
+    setLoadingPrices(false);
+  };
+
+  const selectedProduct = products.find(
+    (product) =>
+      String(product.id) === String(selectedProductId)
+  );
+
+  const selectedPrice = prices.find(
+    (item) => item.duration === selectedDuration
+  );
+
+  const selectedMethod =
+    methods.find(
+      (method) =>
+        method.type === "upi" &&
+        method.upi_id
+    ) || null;
+
+  const qrUrl = (() => {
+    if (!selectedMethod || !selectedPrice) {
+      return "";
+    }
+
+    const upiUrl =
+      `upi://pay?pa=${encodeURIComponent(
+        selectedMethod.upi_id
+      )}` +
+      `&pn=${encodeURIComponent(
+        selectedMethod.account_name ||
+          selectedMethod.name ||
+          "FZ BOT TG"
+      )}` +
+      `&am=${encodeURIComponent(
+        Number(selectedPrice.price).toFixed(2)
+      )}` +
+      `&cu=INR` +
+      `&tn=${encodeURIComponent(
+        `${selectedProduct?.name || "Product"} - ${selectedDuration}`
+      )}`;
+
+    return (
+      "https://api.qrserver.com/v1/create-qr-code/" +
+      `?size=320x320&data=${encodeURIComponent(upiUrl)}`
+    );
+  })();
+
+  const submitPayment = async (event) => {
+    event.preventDefault();
+
+    setError("");
+    setSuccess("");
+
+    if (!selectedProductId) {
+      setError("Please select a product.");
+      return;
+    }
+
+    if (!selectedDuration) {
+      setError("Please select a duration.");
+      return;
+    }
+
+    if (!selectedPrice) {
+      setError("Selected price not found.");
+      return;
+    }
+
+    if (!transactionId.trim()) {
+      setError("Please enter your transaction ID.");
+      return;
+    }
+
+    if (!selectedMethod) {
+      setError("No active UPI payment method available.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const {
+        data: sessionData,
+      } = await supabase.auth.getSession();
+
+      const userId =
+        sessionData?.session?.user?.id || null;
+
+      const { error: insertError } = await supabase
+        .from("payments")
+        .insert({
+          user_id: userId,
+          amount: Number(selectedPrice.price),
+          payment_method: selectedMethod.name,
+          transaction_id: transactionId.trim(),
+          status: "pending",
+        });
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      setSuccess(
+        "Payment submitted successfully. Verification pending."
+      );
+
+      setTransactionId("");
+    } catch (submitError) {
+      console.error(
+        "Purchase payment error:",
+        submitError
+      );
+
+      setError(
+        submitError?.message ||
+          "Payment submit failed."
+      );
+    }
+
+    setSubmitting(false);
+  };
+
+  return (
+    <section className="page">
+      <div className="page-heading">
+        <div>
+          <h1>🛒 Purchase</h1>
+          <p>
+            Select product, duration and complete payment.
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div
+          style={{
+            marginBottom: "16px",
+            padding: "12px 14px",
+            borderRadius: "10px",
+            background: "rgba(239,68,68,0.12)",
+            border:
+              "1px solid rgba(239,68,68,0.35)",
+            color: "#fca5a5",
+          }}
+        >
+          ⚠️ {error}
+        </div>
+      )}
+
+      {success && (
+        <div
+          style={{
+            marginBottom: "16px",
+            padding: "12px 14px",
+            borderRadius: "10px",
+            background: "rgba(34,197,94,0.12)",
+            border:
+              "1px solid rgba(34,197,94,0.35)",
+            color: "#86efac",
+          }}
+        >
+          ✅ {success}
+        </div>
+      )}
+
+      <div
+        className="panel-card"
+        style={{
+          maxWidth: "900px",
+        }}
+      >
+        {loadingProducts ? (
+          <div className="empty-state">
+            <h3>Loading products...</h3>
+          </div>
+        ) : (
+          <form
+            onSubmit={submitPayment}
+            style={{
+              display: "grid",
+              gap: "18px",
+            }}
+          >
+            <label>
+              Product
+
+              <select
+                value={selectedProductId}
+                onChange={(event) => {
+                  const value = event.target.value;
+
+                  setSelectedProductId(value);
+                  loadPrices(value);
+                  setSuccess("");
+                }}
+                style={{
+                  width: "100%",
+                  marginTop: "6px",
+                }}
+              >
+                <option value="">
+                  Select Product
+                </option>
+
+                {products.map((product) => (
+                  <option
+                    key={product.id}
+                    value={product.id}
+                  >
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {selectedProductId && (
+              <label>
+                Duration
+
+                <select
+                  value={selectedDuration}
+                  onChange={(event) =>
+                    setSelectedDuration(
+                      event.target.value
+                    )
+                  }
+                  disabled={loadingPrices}
+                  style={{
+                    width: "100%",
+                    marginTop: "6px",
+                  }}
+                >
+                  <option value="">
+                    {loadingPrices
+                      ? "Loading prices..."
+                      : "Select Duration"}
+                  </option>
+
+                  {prices.map((item) => (
+                    <option
+                      key={item.id}
+                      value={item.duration}
+                    >
+                      {item.duration} — ₹
+                      {Number(item.price).toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {selectedPrice && (
+              <div
+                style={{
+                  padding: "16px",
+                  borderRadius: "12px",
+                  background:
+                    "rgba(37,99,235,0.10)",
+                  border:
+                    "1px solid rgba(37,99,235,0.25)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "13px",
+                    opacity: 0.7,
+                  }}
+                >
+                  Selected Plan
+                </div>
+
+                <div
+                  style={{
+                    fontSize: "22px",
+                    fontWeight: "800",
+                    marginTop: "5px",
+                  }}
+                >
+                  {selectedProduct?.name}
+                </div>
+
+                <div style={{ marginTop: "5px" }}>
+                  {selectedDuration}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: "28px",
+                    fontWeight: "800",
+                    marginTop: "8px",
+                  }}
+                >
+                  ₹{Number(selectedPrice.price).toFixed(2)}
+                </div>
+              </div>
+            )}
+
+            {selectedPrice && selectedMethod && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "minmax(250px, 1fr) minmax(240px, 320px)",
+                  gap: "24px",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <h3>💳 Pay with UPI</h3>
+
+                  <p>
+                    UPI ID:{" "}
+                    <strong>
+                      {selectedMethod.upi_id}
+                    </strong>
+                  </p>
+
+                  {selectedMethod.instructions && (
+                    <p
+                      style={{
+                        opacity: 0.7,
+                      }}
+                    >
+                      {selectedMethod.instructions}
+                    </p>
+                  )}
+                </div>
+
+                {qrUrl && (
+                  <div
+                    style={{
+                      textAlign: "center",
+                    }}
+                  >
+                    <img
+                      src={qrUrl}
+                      alt="Payment QR"
+                      style={{
+                        width: "260px",
+                        maxWidth: "100%",
+                        background: "#ffffff",
+                        padding: "8px",
+                        borderRadius: "12px",
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        marginTop: "8px",
+                        fontWeight: "700",
+                      }}
+                    >
+                      Scan & Pay ₹
+                      {Number(
+                        selectedPrice.price
+                      ).toFixed(2)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {selectedPrice && (
+              <label>
+                Transaction ID / UTR
+
+                <input
+                  type="text"
+                  value={transactionId}
+                  onChange={(event) =>
+                    setTransactionId(
+                      event.target.value
+                    )
+                  }
+                  placeholder="Enter UTR / Transaction ID"
+                  style={{
+                    width: "100%",
+                    marginTop: "6px",
+                  }}
+                />
+              </label>
+            )}
+
+            <button
+              type="submit"
+              className="primary-btn"
+              disabled={submitting}
+            >
+              {submitting
+                ? "Submitting..."
+                : "💳 Submit Payment"}
+            </button>
+          </form>
+        )}
+      </div>
+    </section>
+  );
+}
 function Products() {
   const emptyForm = {
     name: "",
@@ -4162,6 +5324,10 @@ function Payments() {
   };
 
   const [methodForm, setMethodForm] = useState(emptyMethod);
+  const [qrMethodId, setQrMethodId] = useState("");
+const [qrAmount, setQrAmount] = useState("");
+const [qrNote, setQrNote] = useState("FZ BOT TG Payment");
+const [qrGeneratedUrl, setQrGeneratedUrl] = useState("");
 
   const loadPayments = async () => {
     setLoadingPayments(true);
@@ -4369,6 +5535,47 @@ function Payments() {
   };
 
   const generateUpiQrUrl = (method) => {
+    const generatePaymentQr = () => {
+  const activeMethods = methods.filter(
+    (method) =>
+      method.is_active !== false &&
+      method.type === "upi" &&
+      method.upi_id
+  );
+
+  const selectedMethod =
+    activeMethods.find(
+      (method) => String(method.id) === String(qrMethodId)
+    ) || activeMethods[0];
+
+  if (!selectedMethod) {
+    setError("Pehle ek active UPI payment method add karo.");
+    setQrGeneratedUrl("");
+    return;
+  }
+
+  const upiUrl =
+    `upi://pay?pa=${encodeURIComponent(selectedMethod.upi_id)}` +
+    `&pn=${encodeURIComponent(
+      selectedMethod.account_name ||
+        selectedMethod.name ||
+        "FZ BOT TG"
+    )}` +
+    (qrAmount.trim()
+      ? `&am=${encodeURIComponent(qrAmount.trim())}`
+      : "") +
+    `&cu=INR` +
+    (qrNote.trim()
+      ? `&tn=${encodeURIComponent(qrNote.trim())}`
+      : "");
+
+  const qrUrl =
+    `https://api.qrserver.com/v1/create-qr-code/` +
+    `?size=320x320&data=${encodeURIComponent(upiUrl)}`;
+
+  setQrGeneratedUrl(qrUrl);
+  setError("");
+};
     if (!method?.upi_id) return "";
 
     const upiUrl =
@@ -4531,6 +5738,246 @@ function Payments() {
       </div>
 
       {/* DEPOSITS */}
+
+      {/* QR GENERATOR */}
+
+<div
+  className="panel-card"
+  style={{
+    marginTop: "18px",
+    marginBottom: "18px",
+  }}
+>
+  <div className="panel-header">
+    <div>
+      <h2>📱 Payment QR Generator</h2>
+      <p>
+        UPI payment ke liye amount-based QR generate karo.
+      </p>
+    </div>
+  </div>
+
+  {methods.filter(
+    (method) =>
+      method.is_active !== false &&
+      method.type === "upi" &&
+      method.upi_id
+  ).length === 0 ? (
+    <div className="empty-state">
+      <div className="empty-icon">₹</div>
+
+      <h3>No Active UPI Method</h3>
+
+      <p>
+        Pehle Payment Methods tab me ek active UPI
+        payment method add karo.
+      </p>
+    </div>
+  ) : (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns:
+          "minmax(280px, 1fr) minmax(240px, 320px)",
+        gap: "24px",
+        alignItems: "start",
+      }}
+    >
+      {/* QR FORM */}
+
+      <div>
+        <div
+          style={{
+            display: "grid",
+            gap: "14px",
+          }}
+        >
+          <label>
+            <span>UPI Payment Method</span>
+
+            <select
+              value={qrMethodId}
+              onChange={(event) => {
+                setQrMethodId(event.target.value);
+                setQrGeneratedUrl("");
+              }}
+              style={{
+                width: "100%",
+                marginTop: "6px",
+              }}
+            >
+              <option value="">
+                Select UPI Method
+              </option>
+
+              {methods
+                .filter(
+                  (method) =>
+                    method.is_active !== false &&
+                    method.type === "upi" &&
+                    method.upi_id
+                )
+                .map((method) => (
+                  <option
+                    key={method.id}
+                    value={method.id}
+                  >
+                    {method.name} — {method.upi_id}
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          <label>
+            <span>Amount ₹</span>
+
+            <input
+              type="number"
+              min="1"
+              step="0.01"
+              value={qrAmount}
+              onChange={(event) => {
+                setQrAmount(event.target.value);
+                setQrGeneratedUrl("");
+              }}
+              placeholder="Example: 320"
+              style={{
+                width: "100%",
+                marginTop: "6px",
+              }}
+            />
+          </label>
+
+          <label>
+            <span>Payment Note</span>
+
+            <input
+              type="text"
+              value={qrNote}
+              onChange={(event) => {
+                setQrNote(event.target.value);
+                setQrGeneratedUrl("");
+              }}
+              placeholder="FZ BOT TG Payment"
+              style={{
+                width: "100%",
+                marginTop: "6px",
+              }}
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={generatePaymentQr}
+            style={{
+              marginTop: "4px",
+              padding: "12px 16px",
+              border: "none",
+              borderRadius: "10px",
+              background:
+                "linear-gradient(135deg, #2563eb, #7c3aed)",
+              color: "#ffffff",
+              fontWeight: "700",
+              cursor: "pointer",
+            }}
+          >
+            🔳 Generate Payment QR
+          </button>
+        </div>
+      </div>
+
+      {/* QR PREVIEW */}
+
+      <div
+        style={{
+          minHeight: "320px",
+          borderRadius: "14px",
+          border:
+            "1px solid rgba(255,255,255,0.08)",
+          background:
+            "rgba(255,255,255,0.025)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "18px",
+          textAlign: "center",
+        }}
+      >
+        {qrGeneratedUrl ? (
+          <>
+            <img
+              src={qrGeneratedUrl}
+              alt="UPI Payment QR"
+              style={{
+                width: "260px",
+                height: "260px",
+                maxWidth: "100%",
+                borderRadius: "12px",
+                background: "#ffffff",
+                padding: "8px",
+              }}
+            />
+
+            <div
+              style={{
+                marginTop: "12px",
+                fontWeight: "700",
+              }}
+            >
+              {qrAmount
+                ? `₹${Number(qrAmount).toFixed(2)}`
+                : "Payment QR"}
+            </div>
+
+            <a
+              href={qrGeneratedUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "inline-block",
+                marginTop: "10px",
+                textDecoration: "none",
+                padding: "9px 14px",
+                borderRadius: "8px",
+                background: "#16a34a",
+                color: "#ffffff",
+                fontWeight: "600",
+              }}
+            >
+              🔗 Open QR
+            </a>
+          </>
+        ) : (
+          <>
+            <div
+              style={{
+                fontSize: "54px",
+                marginBottom: "10px",
+              }}
+            >
+              📱
+            </div>
+
+            <h3 style={{ margin: "0 0 6px" }}>
+              QR Preview
+            </h3>
+
+            <p
+              style={{
+                margin: 0,
+                opacity: 0.65,
+              }}
+            >
+              UPI method aur amount select karke
+              Generate QR dabao.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  )}
+</div>
 
       {activeTab === "deposits" && (
         <div className="panel-card">

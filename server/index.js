@@ -2524,6 +2524,557 @@ app.delete(
    ========================================================= */
 
 /* =========================================================
+   BOT SCREENS API
+   ========================================================= */
+
+// GET ALL SCREENS FOR A BOT
+app.get("/api/bots/:id/screens", requirePanelAdmin, async (req, res) => {
+  try {
+    const botId = Number(req.params.id);
+
+    if (!Number.isInteger(botId) || botId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bot ID.",
+      });
+    }
+
+    const { data, error } = await adminSupabase
+      .from("bot_screens")
+      .select(
+        "id,connected_bot_id,screen_key,title,message_text,media_type,media_url,parent_screen_id,is_active,position,created_at,updated_at"
+      )
+      .eq("connected_bot_id", botId)
+      .order("position", { ascending: true })
+      .order("id", { ascending: true });
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      screens: data || [],
+    });
+  } catch (error) {
+    console.error("Get screens error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to load screens.",
+    });
+  }
+});
+
+
+// CREATE SCREEN
+app.post("/api/bots/:id/screens", requirePanelAdmin, async (req, res) => {
+  try {
+    const botId = Number(req.params.id);
+
+    if (!Number.isInteger(botId) || botId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bot ID.",
+      });
+    }
+
+    const {
+      screen_key,
+      title = "",
+      message_text = "",
+      media_type = "none",
+      media_url = "",
+      parent_screen_id = null,
+      is_active = true,
+      position = 0,
+    } = req.body || {};
+
+    const cleanKey = String(screen_key || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+    if (!cleanKey) {
+      return res.status(400).json({
+        success: false,
+        message: "Screen key is required.",
+      });
+    }
+
+    const { data, error } = await adminSupabase
+      .from("bot_screens")
+      .insert({
+        connected_bot_id: botId,
+        screen_key: cleanKey,
+        title: String(title || "").trim(),
+        message_text: String(message_text || "").trim(),
+        media_type: String(media_type || "none").trim(),
+        media_url: String(media_url || "").trim() || null,
+        parent_screen_id:
+          parent_screen_id === null || parent_screen_id === ""
+            ? null
+            : Number(parent_screen_id),
+        is_active: Boolean(is_active),
+        position: Math.max(0, Number(position) || 0),
+      })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      message: "Screen created successfully.",
+      screen: data,
+    });
+  } catch (error) {
+    console.error("Create screen error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to create screen.",
+    });
+  }
+});
+
+
+// UPDATE SCREEN
+app.patch("/api/bots/:id/screens/:screenId", requirePanelAdmin, async (req, res) => {
+  try {
+    const botId = Number(req.params.id);
+    const screenId = Number(req.params.screenId);
+
+    if (!Number.isInteger(botId) || botId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bot ID.",
+      });
+    }
+
+    if (!Number.isInteger(screenId) || screenId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid screen ID.",
+      });
+    }
+
+    const {
+      screen_key,
+      title,
+      message_text,
+      media_type,
+      media_url,
+      parent_screen_id,
+      is_active,
+      position,
+    } = req.body || {};
+
+    const updateData = {};
+
+    if (screen_key !== undefined) {
+      const cleanKey = String(screen_key)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_+|_+$/g, "");
+
+      if (!cleanKey) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid screen key.",
+        });
+      }
+
+      updateData.screen_key = cleanKey;
+    }
+
+    if (title !== undefined) {
+      updateData.title = String(title || "").trim();
+    }
+
+    if (message_text !== undefined) {
+      updateData.message_text = String(message_text || "").trim();
+    }
+
+    if (media_type !== undefined) {
+      updateData.media_type = String(media_type || "none").trim();
+    }
+
+    if (media_url !== undefined) {
+      updateData.media_url = String(media_url || "").trim() || null;
+    }
+
+    if (parent_screen_id !== undefined) {
+      updateData.parent_screen_id =
+        parent_screen_id === null || parent_screen_id === ""
+          ? null
+          : Number(parent_screen_id);
+    }
+
+    if (is_active !== undefined) {
+      updateData.is_active = Boolean(is_active);
+    }
+
+    if (position !== undefined) {
+      updateData.position = Math.max(0, Number(position) || 0);
+    }
+
+    updateData.updated_at = new Date().toISOString();
+
+    const { data, error } = await adminSupabase
+      .from("bot_screens")
+      .update(updateData)
+      .eq("id", screenId)
+      .eq("connected_bot_id", botId)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      message: "Screen updated successfully.",
+      screen: data,
+    });
+  } catch (error) {
+    console.error("Update screen error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to update screen.",
+    });
+  }
+});
+
+
+// DELETE SCREEN
+app.delete("/api/bots/:id/screens/:screenId", requirePanelAdmin, async (req, res) => {
+  try {
+    const botId = Number(req.params.id);
+    const screenId = Number(req.params.screenId);
+
+    if (!Number.isInteger(botId) || !Number.isInteger(screenId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bot or screen ID.",
+      });
+    }
+
+    const { error } = await adminSupabase
+      .from("bot_screens")
+      .delete()
+      .eq("id", screenId)
+      .eq("connected_bot_id", botId);
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      message: "Screen deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete screen error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to delete screen.",
+    });
+  }
+});
+
+
+/* =========================================================
+   CONNECTED BOT BUTTON API
+   ========================================================= */
+
+// GET BUTTONS
+app.get("/api/bots/:id/buttons", requirePanelAdmin, async (req, res) => {
+  try {
+    const botId = Number(req.params.id);
+    const screenId = req.query.screen_id
+      ? Number(req.query.screen_id)
+      : null;
+
+    if (!Number.isInteger(botId) || botId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bot ID.",
+      });
+    }
+
+    let query = adminSupabase
+      .from("bot_buttons")
+      .select(
+        "id,connected_bot_id,screen_id,button_text,button_type,button_value,action_type,product_id,price_id,target_screen_id,callback_data,position,is_active,created_at,updated_at"
+      )
+      .eq("connected_bot_id", botId)
+      .order("position", { ascending: true })
+      .order("id", { ascending: true });
+
+    if (Number.isInteger(screenId) && screenId > 0) {
+      query = query.eq("screen_id", screenId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      buttons: data || [],
+    });
+  } catch (error) {
+    console.error("Get buttons error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to load buttons.",
+    });
+  }
+});
+
+
+// CREATE BUTTON
+app.post("/api/bots/:id/buttons", requirePanelAdmin, async (req, res) => {
+  try {
+    const botId = Number(req.params.id);
+
+    if (!Number.isInteger(botId) || botId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bot ID.",
+      });
+    }
+
+    const {
+      screen_id = null,
+      button_text = "",
+      button_type = "callback",
+      button_value = "",
+      action_type = "screen",
+      product_id = null,
+      price_id = null,
+      target_screen_id = null,
+      callback_data = "",
+      position = 0,
+      is_active = true,
+    } = req.body || {};
+
+    const cleanText = String(button_text || "").trim();
+
+    if (!cleanText) {
+      return res.status(400).json({
+        success: false,
+        message: "Button text is required.",
+      });
+    }
+
+    const action = String(action_type || "screen")
+      .trim()
+      .toLowerCase();
+
+    let generatedCallback = String(callback_data || "").trim();
+
+    if (!generatedCallback) {
+      if (action === "screen" && target_screen_id) {
+        generatedCallback = `fz:screen:${Number(target_screen_id)}`;
+      } else if (action === "product" && product_id) {
+        generatedCallback = `fz:product:${Number(product_id)}`;
+      } else if (action === "price" && price_id) {
+        generatedCallback = `fz:price:${Number(price_id)}`;
+      } else if (action === "purchase" && price_id) {
+        generatedCallback = `fz:purchase:${Number(price_id)}`;
+      } else if (action === "balance") {
+        generatedCallback = "fz:balance";
+      } else if (action === "add_funds") {
+        generatedCallback = "fz:add_funds";
+      } else if (action === "orders") {
+        generatedCallback = "fz:orders";
+      } else if (action === "profile") {
+        generatedCallback = "fz:profile";
+      } else if (action === "support") {
+        generatedCallback = "fz:support";
+      } else if (action === "back") {
+        generatedCallback = "fz:back";
+      } else if (action === "main_menu") {
+        generatedCallback = "fz:main_menu";
+      }
+    }
+
+    const { data, error } = await adminSupabase
+      .from("bot_buttons")
+      .insert({
+        connected_bot_id: botId,
+        screen_id:
+          screen_id === null || screen_id === ""
+            ? null
+            : Number(screen_id),
+        button_text: cleanText,
+        button_type:
+          action === "url"
+            ? "url"
+            : "callback",
+        button_value: String(button_value || "").trim(),
+        action_type: action,
+        product_id:
+          product_id === null || product_id === ""
+            ? null
+            : Number(product_id),
+        price_id:
+          price_id === null || price_id === ""
+            ? null
+            : Number(price_id),
+        target_screen_id:
+          target_screen_id === null || target_screen_id === ""
+            ? null
+            : Number(target_screen_id),
+        callback_data: generatedCallback.slice(0, 64) || null,
+        position: Math.max(0, Number(position) || 0),
+        is_active: Boolean(is_active),
+      })
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      message: "Button created successfully.",
+      button: data,
+    });
+  } catch (error) {
+    console.error("Create button error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to create button.",
+    });
+  }
+});
+
+
+// UPDATE BUTTON
+app.patch("/api/bots/:id/buttons/:buttonId", requirePanelAdmin, async (req, res) => {
+  try {
+    const botId = Number(req.params.id);
+    const buttonId = Number(req.params.buttonId);
+
+    if (!Number.isInteger(botId) || !Number.isInteger(buttonId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bot or button ID.",
+      });
+    }
+
+    const allowedFields = [
+      "screen_id",
+      "button_text",
+      "button_type",
+      "button_value",
+      "action_type",
+      "product_id",
+      "price_id",
+      "target_screen_id",
+      "callback_data",
+      "position",
+      "is_active",
+    ];
+
+    const updateData = {};
+
+    for (const field of allowedFields) {
+      if (req.body?.[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    }
+
+    if (updateData.button_text !== undefined) {
+      updateData.button_text = String(updateData.button_text || "").trim();
+    }
+
+    if (updateData.button_value !== undefined) {
+      updateData.button_value = String(updateData.button_value || "").trim();
+    }
+
+    if (updateData.action_type !== undefined) {
+      updateData.action_type = String(
+        updateData.action_type || "screen"
+      )
+        .trim()
+        .toLowerCase();
+    }
+
+    if (updateData.callback_data !== undefined) {
+      updateData.callback_data =
+        String(updateData.callback_data || "").trim().slice(0, 64) || null;
+    }
+
+    updateData.updated_at = new Date().toISOString();
+
+    const { data, error } = await adminSupabase
+      .from("bot_buttons")
+      .update(updateData)
+      .eq("id", buttonId)
+      .eq("connected_bot_id", botId)
+      .select("*")
+      .single();
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      message: "Button updated successfully.",
+      button: data,
+    });
+  } catch (error) {
+    console.error("Update button error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to update button.",
+    });
+  }
+});
+
+
+// DELETE BUTTON
+app.delete("/api/bots/:id/buttons/:buttonId", requirePanelAdmin, async (req, res) => {
+  try {
+    const botId = Number(req.params.id);
+    const buttonId = Number(req.params.buttonId);
+
+    if (!Number.isInteger(botId) || !Number.isInteger(buttonId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bot or button ID.",
+      });
+    }
+
+    const { error } = await adminSupabase
+      .from("bot_buttons")
+      .delete()
+      .eq("id", buttonId)
+      .eq("connected_bot_id", botId);
+
+    if (error) throw error;
+
+    return res.json({
+      success: true,
+      message: "Button deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete button error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to delete button.",
+    });
+  }
+});
+
+/* =========================================================
    404
    ========================================================= */
 
