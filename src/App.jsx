@@ -598,81 +598,98 @@ function BotController() {
   };
 
   const saveScreen = async () => {
-    if (!bot?.id) return;
+  if (!bot?.id) {
+    setError("Please connect a bot first.");
+    return;
+  }
 
-    const key = screenForm.screen_key.trim();
-    const title = screenForm.title.trim();
-    const message = screenForm.message_text.trim();
+  const key = screenForm.screen_key.trim();
+  const title = screenForm.title.trim();
+  const message = screenForm.message_text.trim();
 
-    if (!key) {
-      setError("Screen key is required.");
-      return;
-    }
+  if (!key) {
+    setError("Screen key is required.");
+    return;
+  }
 
-    if (!title) {
-      setError("Screen title is required.");
-      return;
-    }
+  if (!title) {
+    setError("Screen title is required.");
+    return;
+  }
 
-    setScreenSaving(true);
-    setError("");
-    setSuccess("");
+  setScreenSaving(true);
+  setError("");
+  setSuccess("");
 
-    try {
-      const accessToken = await getAccessToken();
+  try {
+    const accessToken = await getAccessToken();
 
-      const editing = Boolean(screenForm.id);
+    const editing = Boolean(screenForm.id);
 
-      const url = editing
-        ? `${API_BASE}/api/bots/${bot.id}/screens/${screenForm.id}`
-        : `${API_BASE}/api/bots/${bot.id}/screens`;
+    const url = editing
+      ? `${API_BASE}/api/bots/${bot.id}/screens/${screenForm.id}`
+      : `${API_BASE}/api/bots/${bot.id}/screens`;
 
-      const response = await fetch(url, {
-        method: editing ? "PATCH" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          screen_key: key,
-          title,
-          message_text: message,
-          media_type: screenForm.media_type,
-          media_url: screenForm.media_url.trim(),
-          parent_screen_id:
-            screenForm.parent_screen_id === ""
-              ? null
-              : Number(screenForm.parent_screen_id),
-          position: Number(screenForm.position) || 0,
-          is_active: screenForm.is_active,
-        }),
-      });
+    const response = await fetch(url, {
+      method: editing ? "PATCH" : "POST",
 
-      const data = await response.json().catch(() => null);
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
 
-      if (!response.ok || !data?.success) {
-        throw new Error(
-          data?.message || "Screen save failed."
-        );
-      }
+      body: JSON.stringify({
+        screen_key: key,
+        title,
+        message_text: message,
+        media_type: screenForm.media_type || "none",
+        media_url:
+          screenForm.media_url.trim() || null,
 
-      setSuccess(
-        editing
-          ? "Screen updated successfully."
-          : "Screen created successfully."
+        parent_screen_id:
+          screenForm.parent_screen_id === "" ||
+          screenForm.parent_screen_id === null
+            ? null
+            : Number(screenForm.parent_screen_id),
+
+        position:
+          Number(screenForm.position) || 0,
+
+        is_active: screenForm.is_active,
+      }),
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        data?.error ||
+        data?.message ||
+        "Screen save failed."
       );
-
-      resetScreenForm();
-      await loadScreens();
-    } catch (err) {
-      console.error("Screen save error:", err);
-      setError(
-        err.message || "Screen save failed."
-      );
-    } finally {
-      setScreenSaving(false);
     }
-  };
+
+    setSuccess(
+      editing
+        ? "Screen updated successfully."
+        : "Screen created successfully."
+    );
+
+    resetScreenForm();
+
+    await loadScreens();
+
+  } catch (err) {
+    console.error("Screen save error:", err);
+
+    setError(
+      err.message || "Screen save failed."
+    );
+
+  } finally {
+    setScreenSaving(false);
+  }
+};
 
   const editScreen = (screen) => {
     setScreenForm({
